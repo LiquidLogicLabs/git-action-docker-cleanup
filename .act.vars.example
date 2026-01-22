@@ -1,0 +1,6 @@
+# Act Variables (GitHub Actions Variables)
+# Copy this file to .act.vars and fill in your values
+# These are repository-level variables (not secrets)
+
+# Currently no variables needed for this action
+# Add any repository variables here if needed in the future

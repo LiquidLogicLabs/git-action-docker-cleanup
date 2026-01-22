@@ -1,0 +1,54 @@
+name: Tests - E2E
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test - GHCR (dry-run)
+        id: test-ghcr
+        uses: ./
+        with:
+          registry-type: ghcr
+          package: test-package
+          dry-run: true
+          verbose: true
+        continue-on-error: true
+
+      - name: Test - Docker Hub (dry-run)
+        id: test-dockerhub
+        uses: ./
+        with:
+          registry-type: docker-hub
+          registry-url: docker.io
+          package: test-package
+          dry-run: true
+          verbose: true
+        continue-on-error: true
+
+      - name: Test - Auto detection
+        id: test-auto
+        uses: ./
+        with:
+          registry-type: auto
+          registry-url: ghcr.io
+          package: test-package
+          dry-run: true
+          verbose: true
+        continue-on-error: true
+
+      - name: Test Summary
+        run: |
+          echo "## ✅ E2E Tests Complete" >> $GITHUB_STEP_SUMMARY
+          echo "E2E tests completed (dry-run mode)" >> $GITHUB_STEP_SUMMARY

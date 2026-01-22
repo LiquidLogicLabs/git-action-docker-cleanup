@@ -1,0 +1,120 @@
+name: 'Docker Registry Cleanup'
+description: 'Delete untagged/tagged images from container registries. Supports GHCR, Gitea, Docker Hub, and any OCI-compliant registry via Docker CLI.'
+author: 'LiquidLogicLabs'
+inputs:
+  # Registry configuration
+  registry-type:
+    description: 'Registry type: ghcr, gitea, docker-hub, docker, or auto'
+    required: true
+  registry-url:
+    description: 'Registry base URL (required for gitea, docker, and auto; optional for ghcr/docker-hub)'
+    required: false
+  registry-username:
+    description: 'Registry username (optional, for Docker Hub and docker CLI provider)'
+    required: false
+  registry-password:
+    description: 'Registry password (optional, for Docker Hub and docker CLI provider, alternative to token)'
+    required: false
+  
+  # Authentication
+  token:
+    description: 'Authentication token (registry-specific)'
+    required: false
+    default: ${{ github.token }}
+  
+  # Repository/package configuration
+  owner:
+    description: 'Repository owner (optional, defaults to current repo owner)'
+    required: false
+  repository:
+    description: 'Repository name (optional, defaults to current repo name)'
+    required: false
+  package:
+    description: 'Package name to clean (can be used instead of packages)'
+    required: false
+  packages:
+    description: 'Comma-separated list of packages to cleanup'
+    required: false
+  expand-packages:
+    description: 'Enable wildcard or regular expression support on the package(s) option'
+    required: false
+    default: 'false'
+  use-regex:
+    description: 'Use regular expression for package matching'
+    required: false
+    default: 'false'
+  
+  # Cleanup options
+  dry-run:
+    description: 'Simulate cleanup without deleting'
+    required: false
+    default: 'false'
+  keep-n-tagged:
+    description: 'Keep N latest tagged images'
+    required: false
+  keep-n-untagged:
+    description: 'Keep N latest untagged images'
+    required: false
+  delete-untagged:
+    description: 'Delete all untagged images'
+    required: false
+    default: 'false'
+  delete-tags:
+    description: 'Delete specific tags (wildcard/regex supported)'
+    required: false
+  exclude-tags:
+    description: 'Exclude tags from deletion'
+    required: false
+  older-than:
+    description: 'Delete images older than specified time (e.g., "30d", "2w", "1m")'
+    required: false
+  delete-ghost-images:
+    description: 'Delete ghost images'
+    required: false
+    default: 'false'
+  delete-partial-images:
+    description: 'Delete partial multi-arch images'
+    required: false
+    default: 'false'
+  delete-orphaned-images:
+    description: 'Delete orphaned images'
+    required: false
+    default: 'false'
+  validate:
+    description: 'Validate multi-arch images after cleanup'
+    required: false
+    default: 'false'
+  
+  # API configuration
+  retry:
+    description: 'Retry count for API calls'
+    required: false
+    default: '3'
+  throttle:
+    description: 'Throttle delay between API calls (milliseconds)'
+    required: false
+    default: '1000'
+  
+  # Logging
+  verbose:
+    description: 'Enable verbose debug logging'
+    required: false
+    default: 'false'
+
+outputs:
+  deleted-count:
+    description: 'Number of images/packages deleted'
+  kept-count:
+    description: 'Number of images/packages kept'
+  deleted-tags:
+    description: 'List of deleted tags (comma-separated)'
+  kept-tags:
+    description: 'List of kept tags (comma-separated)'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+
+branding:
+  icon: 'trash'
+  color: 'red'

@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+lib/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.local
+
+# Act configuration (keep examples, ignore actual files)
+.act.env
+.act.secrets
+.act.vars
+
+# IDE and editor files
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# AI Tools
+.bmad-core/
+.github/chatmodes/
