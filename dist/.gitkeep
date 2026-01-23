@@ -1,2 +1,0 @@
-# This directory contains the built action code
-# The dist/index.js file will be committed to git as required for GitHub Actions

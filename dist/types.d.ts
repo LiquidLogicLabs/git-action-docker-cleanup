@@ -1,7 +1,7 @@
 /**
  * Type definitions for the Docker Registry Cleanup Action
  */
-export type RegistryType = 'ghcr' | 'gitea' | 'docker-hub' | 'docker' | 'auto';
+export type RegistryType = 'ghcr' | 'gitea' | 'docker-hub' | 'docker' | 'oci' | 'auto';
 export type RegistryFeature = 'MULTI_ARCH' | 'REFERRERS' | 'ATTESTATION' | 'COSIGN';
 /**
  * Package/Repository information
@@ -45,6 +45,7 @@ export interface Manifest {
     }>;
     annotations?: Record<string, string>;
     createdAt?: Date;
+    updatedAt?: Date;
 }
 /**
  * Tag information
@@ -141,6 +142,8 @@ export interface CleanupConfig {
     retry: number;
     throttle: number;
     verbose: boolean;
+    expandPackages: boolean;
+    useRegex: boolean;
 }
 /**
  * Cleanup result
@@ -230,4 +233,3 @@ export declare class AuthenticationError extends RegistryError {
 export declare class NotFoundError extends RegistryError {
     constructor(message: string, registryType?: string);
 }
-//# sourceMappingURL=types.d.ts.map

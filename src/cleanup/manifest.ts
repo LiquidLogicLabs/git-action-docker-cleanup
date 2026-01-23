@@ -180,11 +180,11 @@ export function parseOCIManifest(json: string): OCIManifest | OCIIndex {
     mediaType === 'application/vnd.oci.image.index.v1+json' ||
     mediaType === 'application/vnd.docker.distribution.manifest.list.v2+json'
   ) {
-    return manifest as OCIIndex;
+    return manifest as unknown as OCIIndex;
   }
 
   // Regular manifest
-  return manifest as OCIManifest;
+  return manifest as unknown as OCIManifest;
 }
 
 /**

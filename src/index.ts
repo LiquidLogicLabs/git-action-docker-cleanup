@@ -84,6 +84,8 @@ async function run(): Promise<void> {
       retry,
       throttle,
       verbose,
+      expandPackages,
+      useRegex,
     };
 
     // Validate configuration

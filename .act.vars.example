@@ -1,6 +1,24 @@
 # Act Variables (GitHub Actions Variables)
 # Copy this file to .act.vars and fill in your values
 # These are repository-level variables (not secrets)
+# Note: Act uses .act.vars file, but GitHub Actions uses repository variables
+# These vars match the E2E test workflow requirements
+# You can also configure these in ~/.actrc using --var flag
 
-# Currently no variables needed for this action
-# Add any repository variables here if needed in the future
+# E2E Test Variables (matching GitHub Actions repository variables)
+# E2E_GHCR_USERNAME=your-username
+# E2E_GITEA_URL=https://gitea.example.com
+# E2E_GITEA_USERNAME=your-gitea-username
+# E2E_GITEA_OWNER=your-gitea-org
+# E2E_DOCKERHUB_USERNAME=your-dockerhub-username
+# E2E_DOCKERHUB_OWNER=your-dockerhub-org
+
+# Additional variables (from ~/.actrc if available)
+# Usernames and non-sensitive configuration belong here
+# GITHUB_USERNAME=your-github-username
+# GITHUB_ACTOR=your-github-username
+# GITEA_USERNAME=your-gitea-username
+# DOCKERHUB_USERNAME=your-dockerhub-username
+# DOCKERHUB_OWNER=your-dockerhub-org
+# REGISTRY_USERNAME=your-registry-username
+# REGISTRY_NAME=your-registry-hostname

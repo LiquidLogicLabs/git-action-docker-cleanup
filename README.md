@@ -53,6 +53,18 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
     dry-run: true
 ```
 
+### Generic OCI Registry (Harbor, Quay.io, ACR, etc.)
+
+```yaml
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+  with:
+    registry-type: oci
+    registry-url: registry.example.com
+    token: ${{ secrets.REGISTRY_TOKEN }}
+    package: my-org/my-package
+    dry-run: true
+```
+
 ### Auto-Detection
 
 ```yaml
@@ -166,32 +178,58 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 - **Authentication**: Username/password or token
 - **Features**: Multi-arch support, limited referrers/attestation
 
-### Docker CLI (Generic)
+### Generic OCI Registry (Harbor, Quay.io, ACR, Artifactory, etc.)
+
+- **Type**: `oci`
+- **URL**: Required (any OCI-compliant registry)
+- **Authentication**: Bearer token or username/password (Basic auth)
+- **Features**: Full OCI V2 API support (multi-arch, referrers, attestation, cosign)
+- **Limitations**:
+  - Cannot list all packages (must provide package names explicitly)
+  - Cannot delete individual tags (deletes entire manifest, which deletes all tags pointing to it)
+  - Limited metadata (must fetch manifests to get creation dates)
+- **Supported Registries**: Harbor, Quay.io, Azure Container Registry, Artifactory, and any OCI-compliant registry
+
+### Docker CLI (Local Operations)
 
 - **Type**: `docker`
 - **URL**: Required (any OCI-compliant registry)
 - **Authentication**: Username/password or token
 - **Features**: Multi-arch support (via Docker CLI)
 - **Requirements**: Docker must be installed in runner
+- **Note**: Primarily for local image management, not remote registry operations
 
 ### Auto-Detection
 
 - **Type**: `auto`
 - **URL**: Required
-- **Behavior**: Matches URL against known provider URLs, falls back to Docker CLI if no match
+- **Behavior**: Matches URL against known provider URLs, falls back to Generic OCI provider if no match
 - **Known URLs**:
   - `ghcr.io` → GHCR provider
   - `docker.io`, `registry-1.docker.io`, `hub.docker.com` → Docker Hub provider
-  - Other URLs → Docker CLI provider (fallback)
+  - Other URLs → Generic OCI provider (fallback)
 
 ## Feature Compatibility Matrix
 
-| Feature | GHCR | Gitea | Docker Hub | Docker CLI |
-|---------|------|-------|------------|------------|
-| Multi-Arch | ✅ | ✅ | ✅ | ✅ |
-| Referrers | ✅ | ✅ | ⚠️ | ❌ |
-| Attestation | ✅ | ✅ | ⚠️ | ❌ |
-| Cosign | ✅ | ✅ | ⚠️ | ❌ |
+| Feature | GHCR | Gitea | Docker Hub | Generic OCI | Docker CLI |
+|---------|------|-------|------------|-------------|------------|
+| Multi-Arch | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Referrers | ✅ | ✅ | ⚠️ | ✅ | ❌ |
+| Attestation | ✅ | ✅ | ⚠️ | ✅ | ❌ |
+| Cosign | ✅ | ✅ | ⚠️ | ✅ | ❌ |
+| List Packages | ✅ | ✅ | ❌ | ❌ | ✅ (local) |
+| Delete Individual Tags | ⚠️ | ✅ | ❌ | ❌ | ✅ (local) |
+
+**Legend:**
+- ✅ Full support
+- ⚠️ Limited support (may have restrictions)
+- ❌ Not supported
+
+**Notes:**
+- **GHCR**: Cannot delete individual tags when multiple tags point to the same version (GitHub Package API limitation)
+- **Docker Hub**: Limited referrers/attestation support
+- **Generic OCI**: Cannot delete individual tags (deletes entire manifest), cannot list all packages
+- **Docker CLI**: Only works with local images, not remote registries
 
 ## Security Considerations
 

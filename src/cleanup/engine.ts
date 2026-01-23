@@ -1,4 +1,4 @@
-import { IRegistryProvider, Image, CleanupConfig, CleanupResult, Package } from '../types';
+import { IRegistryProvider, Image, CleanupConfig, CleanupResult, Package, Referrer, Tag } from '../types';
 import { Logger } from '../logger';
 import { ImageFilter } from './filters';
 import { buildImageGraph } from './manifest';
@@ -12,6 +12,7 @@ export class CleanupEngine {
   private readonly config: CleanupConfig;
   private readonly logger: Logger;
   private readonly filter: ImageFilter;
+  private allDiscoveredImages: Image[] = [];
 
   constructor(provider: IRegistryProvider, config: CleanupConfig, logger: Logger) {
     this.provider = provider;
@@ -40,6 +41,9 @@ export class CleanupEngine {
 
       // Build dependency graph
       buildImageGraph(images);
+
+      // Store all images for checking excluded tags during deletion
+      this.allDiscoveredImages = images;
 
       // Filtering phase
       this.logger.info('Starting filtering phase...');
@@ -107,8 +111,16 @@ export class CleanupEngine {
         this.logger.debug(`Discovering images for package: ${packageName}`);
 
         // Get tags
-        const tags = await this.provider.listTags(packageName);
-        this.logger.debug(`Found ${tags.length} tags for ${packageName}`);
+        let tags: Tag[] = [];
+        try {
+          tags = await this.provider.listTags(packageName);
+          this.logger.debug(`Found ${tags.length} tags for ${packageName}`);
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          this.logger.warning(`Failed to list tags for package ${packageName}: ${errorMsg}`);
+          // Continue to try getPackageManifests even if listTags fails
+          tags = [];
+        }
 
         // Get manifests for each tag
         for (const tag of tags) {
@@ -116,7 +128,7 @@ export class CleanupEngine {
             const manifest = await this.provider.getManifest(packageName, tag.digest);
             
             // Get referrers if supported
-            let referrers = [];
+            let referrers: Referrer[] = [];
             if (this.provider.supportsFeature('REFERRERS')) {
               try {
                 referrers = await this.provider.getReferrers(packageName, manifest.digest);
@@ -192,13 +204,51 @@ export class CleanupEngine {
     const untaggedToDelete = this.filter.filterUntagged(filtered);
     imagesToDelete.push(...untaggedToDelete);
 
-    // Remove duplicates
+    // Remove duplicates by manifest digest, but merge tags from images with the same manifest
+    // Also filter out excluded tags from merged images
     const uniqueImages = new Map<string, Image>();
+    const excludePatterns = this.config.excludeTags || [];
+    
     for (const image of imagesToDelete) {
-      uniqueImages.set(image.manifest.digest, image);
+      const existing = uniqueImages.get(image.manifest.digest);
+      if (existing) {
+        // Merge tags from this image into the existing one
+        const existingTagNames = new Set(existing.tags.map(t => t.name));
+        for (const tag of image.tags) {
+          if (!existingTagNames.has(tag.name)) {
+            existing.tags.push(tag);
+          }
+        }
+      } else {
+        uniqueImages.set(image.manifest.digest, image);
+      }
     }
 
-    return Array.from(uniqueImages.values());
+    // Filter out excluded tags from merged images
+    const finalImages: Image[] = [];
+    for (const image of uniqueImages.values()) {
+      // Filter out excluded tags
+      const tagsToDelete = image.tags.filter(tag => {
+        for (const pattern of excludePatterns) {
+          const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+          if (regex.test(tag.name)) {
+            return false; // Exclude this tag
+          }
+        }
+        return true; // Keep this tag for deletion
+      });
+
+      // Only include image if there are tags to delete (after excluding)
+      if (tagsToDelete.length > 0) {
+        // Create a new image with only the tags to delete
+        finalImages.push({
+          ...image,
+          tags: tagsToDelete,
+        });
+      }
+    }
+
+    return finalImages;
   }
 
   /**
@@ -211,9 +261,39 @@ export class CleanupEngine {
       errors: [] as string[],
     };
 
+    // Check if there are excluded tags - if so, we need to check all tags before deleting manifest
+    const hasExcludedTags = this.config.excludeTags && this.config.excludeTags.length > 0;
+    
+    // Build a map of all discovered images by manifest digest to check for excluded tags
+    const allImagesByDigest = new Map<string, Image[]>();
+    // This will be populated by checking all images that share the same manifest
+    // For now, we'll check during deletion
+
     for (const image of images) {
       try {
-        // Delete tags first
+        // Check if excluded tags exist for this manifest
+        // If excluded tags exist, we should NOT delete the manifest (which would remove all tags)
+        // But we can still delete individual tags via Package API (e.g., Gitea, GHCR)
+        const hasExcludedTagsForManifest = hasExcludedTags && 
+          await this.hasExcludedTagsForManifest(image.package.name, image.manifest.digest);
+
+        // Delete tags first (even if excluded tags exist - individual tag deletion is supported by some providers)
+        // However, if excluded tags exist for this manifest, we need to be careful:
+        // - For providers that support individual tag deletion (Gitea Package API, GHCR Package API), we can delete tags
+        // - For providers that only support manifest deletion (OCI Registry API fallback), we should NOT delete tags
+        //   that share a manifest with excluded tags, as it would delete the excluded tags too
+        let allTagsDeleted = true;
+        let shouldSkipTagDeletion = false;
+        
+        if (hasExcludedTagsForManifest) {
+          // Check if provider supports individual tag deletion
+          // Gitea and GHCR support it via their Package APIs, but fallback to OCI Registry API doesn't
+          // For now, we'll try to delete tags and let the provider handle it
+          // If the provider falls back to OCI Registry API, it will delete the manifest (and all tags)
+          // We'll prevent manifest deletion later to protect excluded tags
+          this.logger.debug(`Manifest ${image.manifest.digest} has excluded tags - will attempt individual tag deletion but prevent manifest deletion`);
+        }
+        
         for (const tag of image.tags) {
           try {
             await this.provider.deleteTag(image.package.name, tag.name);
@@ -223,32 +303,73 @@ export class CleanupEngine {
             const errorMsg = `Failed to delete tag ${tag.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
             this.logger.warning(errorMsg);
             result.errors.push(errorMsg);
+            allTagsDeleted = false;
+          }
+        }
+        
+        // After tag deletion, check again if excluded tags still exist
+        // (in case the provider deleted the manifest via OCI Registry API fallback)
+        if (hasExcludedTagsForManifest) {
+          const stillHasExcludedTags = await this.hasExcludedTagsForManifest(image.package.name, image.manifest.digest);
+          if (stillHasExcludedTags) {
+            this.logger.debug(`Manifest ${image.manifest.digest} still has excluded tags after tag deletion - skipping manifest deletion`);
+            shouldSkipTagDeletion = true; // Prevent manifest deletion
           }
         }
 
-        // Delete manifest (and child images if multi-arch)
-        try {
-          await this.provider.deleteManifest(image.package.name, image.manifest.digest);
-          
-          // Delete child images if multi-arch
-          if (image.childImages) {
-            for (const child of image.childImages) {
-              try {
-                await this.provider.deleteManifest(image.package.name, child.manifest.digest);
-              } catch (error) {
-                const errorMsg = `Failed to delete child manifest ${child.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-                this.logger.warning(errorMsg);
-                result.errors.push(errorMsg);
+        // Only delete manifest if all tags were successfully deleted AND no excluded tags exist
+        // If excluded tags exist, we must NOT delete the manifest (which would remove all tags including excluded ones)
+        let shouldDeleteManifest = allTagsDeleted && image.tags.length > 0 && !shouldSkipTagDeletion;
+        
+        if (shouldDeleteManifest && hasExcludedTagsForManifest) {
+          // Excluded tags exist for this manifest - do not delete manifest
+          this.logger.debug(`Skipping manifest deletion for ${image.manifest.digest} - excluded tags exist`);
+          shouldDeleteManifest = false;
+        } else if (shouldDeleteManifest && hasExcludedTags) {
+          // Double-check that excluded tags don't still exist after tag deletion
+          const stillHasExcludedTags = await this.hasExcludedTagsForManifest(image.package.name, image.manifest.digest);
+          if (stillHasExcludedTags) {
+            shouldDeleteManifest = false;
+          }
+        }
+
+        if (shouldDeleteManifest) {
+          try {
+            await this.provider.deleteManifest(image.package.name, image.manifest.digest);
+            
+            // Delete child images if multi-arch
+            if (image.childImages) {
+              for (const child of image.childImages) {
+                try {
+                  await this.provider.deleteManifest(image.package.name, child.manifest.digest);
+                } catch (error) {
+                  const errorMsg = `Failed to delete child manifest ${child.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                  this.logger.warning(errorMsg);
+                  result.errors.push(errorMsg);
+                }
               }
             }
-          }
 
-          result.deletedCount++;
-          this.logger.info(`Deleted manifest ${image.manifest.digest} from ${image.package.name}`);
-        } catch (error) {
-          const errorMsg = `Failed to delete manifest ${image.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
-          this.logger.warning(errorMsg);
-          result.errors.push(errorMsg);
+            result.deletedCount++;
+            this.logger.info(`Deleted manifest ${image.manifest.digest} from ${image.package.name}`);
+          } catch (error) {
+            const errorMsg = `Failed to delete manifest ${image.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            this.logger.warning(errorMsg);
+            result.errors.push(errorMsg);
+          }
+        } else if (image.tags.length === 0) {
+          // Untagged manifest - delete it
+          try {
+            await this.provider.deleteManifest(image.package.name, image.manifest.digest);
+            result.deletedCount++;
+            this.logger.info(`Deleted untagged manifest ${image.manifest.digest} from ${image.package.name}`);
+          } catch (error) {
+            const errorMsg = `Failed to delete untagged manifest ${image.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            this.logger.warning(errorMsg);
+            result.errors.push(errorMsg);
+          }
+        } else if (hasExcludedTags) {
+          this.logger.debug(`Skipping manifest deletion for ${image.manifest.digest} - excluded tags may still exist`);
         }
       } catch (error) {
         const errorMsg = `Failed to delete image ${image.package.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -258,6 +379,93 @@ export class CleanupEngine {
     }
 
     return result;
+  }
+
+  /**
+   * Check if excluded tags exist for a manifest
+   */
+  private async hasExcludedTagsForManifest(packageName: string, digest: string): Promise<boolean> {
+    if (!this.config.excludeTags || this.config.excludeTags.length === 0) {
+      return false; // No excluded tags configured
+    }
+
+    // Check the discovered images to see if any excluded tags exist for this manifest
+    const imagesWithSameManifest = this.allDiscoveredImages.filter((img: Image) => 
+      img.manifest.digest === digest && img.package.name === packageName
+    );
+    
+    for (const img of imagesWithSameManifest) {
+      for (const tag of img.tags) {
+        for (const pattern of this.config.excludeTags) {
+          const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+          if (regex.test(tag.name)) {
+            this.logger.debug(`Manifest ${digest} has excluded tag ${tag.name}`);
+            return true; // Excluded tag exists
+          }
+        }
+      }
+    }
+
+    return false; // No excluded tags found
+  }
+
+  /**
+   * Check if manifest can be safely deleted (no excluded tags exist)
+   */
+  private async canDeleteManifest(packageName: string, digest: string): Promise<boolean> {
+    if (!this.config.excludeTags || this.config.excludeTags.length === 0) {
+      return true; // No excluded tags, safe to delete
+    }
+
+    try {
+      // First check the discovered images to see if any excluded tags exist for this manifest
+      const imagesWithSameManifest = this.allDiscoveredImages.filter(img => 
+        img.manifest.digest === digest && img.package.name === packageName
+      );
+      
+      for (const img of imagesWithSameManifest) {
+        for (const tag of img.tags) {
+          for (const pattern of this.config.excludeTags) {
+            const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+            if (regex.test(tag.name)) {
+              this.logger.debug(`Manifest ${digest} has excluded tag ${tag.name} in discovered images, will not delete manifest`);
+              return false; // Excluded tag exists, don't delete manifest
+            }
+          }
+        }
+      }
+
+      // Also check current tags in registry (in case tags were added after discovery)
+      const tags = await this.provider.listTags(packageName);
+      
+      // Check if any remaining tags match excluded patterns and point to this manifest
+      for (const tag of tags) {
+        // Check if tag matches excluded pattern
+        for (const pattern of this.config.excludeTags) {
+          const regex = new RegExp('^' + pattern.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+          if (regex.test(tag.name)) {
+            // This tag is excluded, check if it points to the same manifest
+            try {
+              const manifest = await this.provider.getManifest(packageName, tag.digest);
+              if (manifest.digest === digest) {
+                this.logger.debug(`Manifest ${digest} has excluded tag ${tag.name}, will not delete manifest`);
+                return false; // Excluded tag exists, don't delete manifest
+              }
+            } catch (error) {
+              // If we can't get manifest, assume it might be excluded and don't delete
+              this.logger.debug(`Could not get manifest for excluded tag ${tag.name}, will not delete manifest`);
+              return false;
+            }
+          }
+        }
+      }
+      
+      return true; // No excluded tags found, safe to delete
+    } catch (error) {
+      // If we can't check tags, err on the side of caution and don't delete
+      this.logger.debug(`Could not verify excluded tags for manifest ${digest}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
   }
 
   /**

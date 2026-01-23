@@ -35,7 +35,6 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DockerCLIProvider = void 0;
 const exec = __importStar(require("@actions/exec"));
-const types_1 = require("../types");
 /**
  * Docker CLI provider
  * Uses Docker CLI commands ONLY - no HTTP API calls
@@ -119,37 +118,54 @@ class DockerCLIProvider {
         return results;
     }
     async authenticate() {
-        try {
-            const username = this.config.username;
-            const password = this.config.password || this.config.token;
-            if (!username || !password) {
-                throw new types_1.AuthenticationError('Docker CLI provider requires username and password/token for authentication', 'docker');
+        this.logger.debug(`[DockerCLI] authenticate: Starting authentication with registry ${this.registryUrl}`);
+        // Authentication is optional for Docker CLI provider since it only works with local images
+        // If credentials are provided, we'll login to the registry (useful for pulling images or if Docker has cached credentials)
+        const username = this.config.username;
+        const password = this.config.password || this.config.token;
+        if (username && password) {
+            this.logger.debug(`[DockerCLI] authenticate: Credentials provided, attempting docker login`);
+            try {
+                // Login to registry using docker login
+                const loginArgs = [
+                    'login',
+                    this.registryUrl,
+                    '--username',
+                    username,
+                    '--password-stdin',
+                ];
+                this.logger.debug(`[DockerCLI] authenticate: Running docker login for ${this.registryUrl}`);
+                await exec.exec('docker', loginArgs, {
+                    input: Buffer.from(password),
+                    silent: !this.logger.verbose,
+                });
+                this.logger.debug(`[DockerCLI] authenticate: Successfully authenticated with registry ${this.registryUrl}`);
             }
-            // Login to registry using docker login
-            const loginArgs = [
-                'login',
-                this.registryUrl,
-                '--username',
-                username,
-                '--password-stdin',
-            ];
-            await exec.exec('docker', loginArgs, {
-                input: Buffer.from(password),
-                silent: !this.logger.verbose,
-            });
-            this.authenticated = true;
-            this.logger.debug(`Successfully authenticated with registry ${this.registryUrl}`);
+            catch (error) {
+                // Don't fail if login fails - we can still work with local images
+                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                this.logger.debug(`[DockerCLI] authenticate: Docker login failed: ${errorMsg}`);
+                this.logger.warning(`Docker login failed (continuing with local images only): ${errorMsg}`);
+            }
         }
-        catch (error) {
-            throw new types_1.AuthenticationError(`Docker login failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'docker');
+        else {
+            this.logger.debug('[DockerCLI] authenticate: No credentials provided - working with local images only');
         }
+        // Mark as authenticated even without credentials since we can work with local images
+        this.authenticated = true;
+        this.logger.debug(`[DockerCLI] authenticate: Authentication complete (authenticated: ${this.authenticated})`);
     }
     async listPackages() {
+        this.logger.debug(`[DockerCLI] listPackages: Starting package discovery from local Docker images`);
+        // Authentication is optional for local operations
         if (!this.authenticated) {
+            this.logger.debug(`[DockerCLI] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Use docker image ls to list local images, filter by registry URL
+        this.logger.debug(`[DockerCLI] listPackages: Running 'docker image ls' to list local images`);
         const images = await this.execDockerJson(['image', 'ls']);
+        this.logger.debug(`[DockerCLI] listPackages: Found ${images.length} local images, filtering by registry ${this.registryUrl}`);
         // Extract unique package names from images that match our registry
         const packageNames = new Set();
         for (const image of images) {
@@ -158,6 +174,7 @@ class DockerCLIProvider {
                 // Extract package name (everything after registry URL)
                 const packageName = image.Repository.replace(`${this.registryUrl}/`, '');
                 packageNames.add(packageName);
+                this.logger.debug(`[DockerCLI] listPackages: Found package ${packageName} from image ${image.Repository}`);
             }
         }
         const packages = [];
@@ -168,36 +185,51 @@ class DockerCLIProvider {
                 type: 'container',
             });
         }
-        this.logger.debug(`Found ${packages.length} packages from local Docker images`);
+        this.logger.debug(`[DockerCLI] listPackages: Completed, found ${packages.length} packages from local Docker images`);
         return packages;
     }
     async getPackageManifests(packageName) {
+        this.logger.debug(`[DockerCLI] getPackageManifests: Starting for package ${packageName}`);
+        // Authentication is optional for local operations
         if (!this.authenticated) {
+            this.logger.debug(`[DockerCLI] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const manifests = [];
         const tags = await this.listTags(packageName);
+        this.logger.debug(`[DockerCLI] getPackageManifests: Found ${tags.length} tags`);
         for (const tag of tags) {
+            this.logger.debug(`[DockerCLI] getPackageManifests: Fetching manifest for tag ${tag.name} (digest: ${tag.digest})`);
             try {
                 const manifest = await this.getManifest(packageName, tag.digest);
                 manifests.push(manifest);
+                this.logger.debug(`[DockerCLI] getPackageManifests: Successfully fetched manifest ${manifest.digest}`);
             }
             catch (error) {
-                this.logger.warning(`Failed to get manifest for ${packageName}@${tag.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                this.logger.debug(`[DockerCLI] getPackageManifests: Failed to get manifest for ${packageName}@${tag.digest}: ${errorMsg}`);
+                this.logger.warning(`Failed to get manifest for ${packageName}@${tag.digest}: ${errorMsg}`);
             }
         }
+        this.logger.debug(`[DockerCLI] getPackageManifests: Completed, returning ${manifests.length} manifests`);
         return manifests;
     }
     async listTags(packageName) {
+        this.logger.debug(`[DockerCLI] listTags: Starting for package ${packageName}`);
+        // Authentication is optional for local operations
         if (!this.authenticated) {
+            this.logger.debug(`[DockerCLI] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Use docker image ls to list local images for this package
         const imageName = `${this.registryUrl}/${packageName}`;
+        this.logger.debug(`[DockerCLI] listTags: Running 'docker image ls' to find images matching ${imageName}`);
         const images = await this.execDockerJson(['image', 'ls']);
+        this.logger.debug(`[DockerCLI] listTags: Found ${images.length} local images, filtering for ${imageName}`);
         const tags = [];
         for (const image of images) {
             if (image.Repository === imageName) {
+                this.logger.debug(`[DockerCLI] listTags: Processing image ${imageName}:${image.Tag}`);
                 // Get manifest to get digest
                 try {
                     const manifest = await this.getManifest(packageName, image.Tag);
@@ -206,10 +238,12 @@ class DockerCLIProvider {
                         digest: manifest.digest,
                         createdAt: new Date(image.CreatedAt),
                     });
+                    this.logger.debug(`[DockerCLI] listTags: Tag ${image.Tag} mapped to digest ${manifest.digest}`);
                 }
                 catch (error) {
                     // If we can't get manifest, still add the tag with ID as digest
-                    this.logger.debug(`Could not get manifest for ${imageName}:${image.Tag}, using image ID as digest`);
+                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                    this.logger.debug(`[DockerCLI] listTags: Could not get manifest for ${imageName}:${image.Tag}: ${errorMsg}, using image ID as digest`);
                     tags.push({
                         name: image.Tag,
                         digest: image.ID,
@@ -218,39 +252,52 @@ class DockerCLIProvider {
                 }
             }
         }
-        this.logger.debug(`Found ${tags.length} tags for ${packageName} from local Docker images`);
+        this.logger.debug(`[DockerCLI] listTags: Completed, returning ${tags.length} tags for ${packageName} from local Docker images`);
         return tags;
     }
     async deleteTag(packageName, tag) {
+        this.logger.debug(`[DockerCLI] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        // Authentication is optional for local operations
         if (!this.authenticated) {
+            this.logger.debug(`[DockerCLI] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const imageName = this.getImageName(packageName, tag);
+        this.logger.debug(`[DockerCLI] deleteTag: Deleting local image ${imageName}`);
         try {
             // Delete local image using docker image rm
+            this.logger.debug(`[DockerCLI] deleteTag: Running 'docker image rm ${imageName}'`);
             await exec.exec('docker', ['image', 'rm', imageName], {
                 silent: !this.logger.verbose,
             });
             this.logger.info(`Deleted local image ${imageName}`);
+            this.logger.debug(`[DockerCLI] deleteTag: Successfully deleted local image ${imageName}`);
         }
         catch (error) {
             // Check if image doesn't exist locally (that's okay)
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            this.logger.debug(`[DockerCLI] deleteTag: Error: ${errorMsg}`);
             if (errorMsg.includes('No such image') || errorMsg.includes('image not found')) {
-                this.logger.debug(`Image ${imageName} not found locally, may have already been deleted`);
+                this.logger.debug(`[DockerCLI] deleteTag: Image ${imageName} not found locally, may have already been deleted`);
                 return;
             }
+            this.logger.error(`[DockerCLI] deleteTag: Failed to delete image ${imageName}: ${errorMsg}`);
             throw new Error(`Failed to delete image ${imageName}: ${errorMsg}`);
         }
     }
     async getManifest(packageName, reference) {
+        this.logger.debug(`[DockerCLI] getManifest: Starting for package ${packageName}, reference ${reference}`);
+        // Authentication is optional for local operations
         if (!this.authenticated) {
+            this.logger.debug(`[DockerCLI] getManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const imageName = this.getImageName(packageName, reference);
+        this.logger.debug(`[DockerCLI] getManifest: Inspecting local image ${imageName}`);
         let manifestOutput = '';
         try {
             // Get manifest using docker manifest inspect
+            this.logger.debug(`[DockerCLI] getManifest: Running 'docker manifest inspect ${imageName}'`);
             await exec.exec('docker', ['manifest', 'inspect', imageName], {
                 silent: !this.logger.verbose,
                 listeners: {
@@ -259,11 +306,13 @@ class DockerCLIProvider {
                     },
                 },
             });
+            this.logger.debug(`[DockerCLI] getManifest: Received ${manifestOutput.length} bytes of manifest data`);
             const manifestData = JSON.parse(manifestOutput);
             // Parse OCI manifest
             const mediaType = manifestData.mediaType || manifestData.schemaVersion ? 'application/vnd.docker.distribution.manifest.v2+json' : 'application/vnd.oci.image.manifest.v1+json';
             // Check if it's a multi-arch manifest (index)
             const isIndex = mediaType.includes('manifest.list') || mediaType.includes('image.index');
+            this.logger.debug(`[DockerCLI] getManifest: Parsed manifest, mediaType: ${mediaType}, isIndex: ${isIndex}`);
             const manifest = {
                 digest: reference.startsWith('sha256:') ? reference : `sha256:${reference}`,
                 mediaType,
@@ -271,6 +320,7 @@ class DockerCLIProvider {
                 createdAt: manifestData.created ? new Date(manifestData.created) : undefined,
             };
             if (isIndex && manifestData.manifests) {
+                this.logger.debug(`[DockerCLI] getManifest: Multi-arch manifest with ${manifestData.manifests.length} child manifests`);
                 manifest.manifests = manifestData.manifests.map((m) => ({
                     digest: m.digest,
                     mediaType: m.mediaType,
@@ -279,6 +329,7 @@ class DockerCLIProvider {
                 }));
             }
             else if (manifestData.config) {
+                this.logger.debug(`[DockerCLI] getManifest: Single-arch manifest with config`);
                 manifest.config = {
                     digest: manifestData.config.digest,
                     mediaType: manifestData.config.mediaType || 'application/vnd.docker.container.image.v1+json',
@@ -286,46 +337,66 @@ class DockerCLIProvider {
                 };
             }
             if (manifestData.layers) {
+                this.logger.debug(`[DockerCLI] getManifest: Manifest has ${manifestData.layers.length} layers`);
                 manifest.layers = manifestData.layers.map((l) => ({
                     digest: l.digest,
                     mediaType: l.mediaType,
                     size: l.size,
                 }));
             }
+            this.logger.debug(`[DockerCLI] getManifest: Successfully parsed manifest, digest: ${manifest.digest}`);
             return manifest;
         }
         catch (error) {
-            throw new Error(`Failed to get manifest for ${packageName}@${reference}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            this.logger.debug(`[DockerCLI] getManifest: Error: ${errorMsg}`);
+            throw new Error(`Failed to get manifest for ${packageName}@${reference}: ${errorMsg}`);
         }
     }
     async deleteManifest(packageName, digest) {
+        this.logger.debug(`[DockerCLI] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
+        // Authentication is optional for local operations
         if (!this.authenticated) {
+            this.logger.debug(`[DockerCLI] deleteManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Try to find local images with this digest and delete them
+        this.logger.debug(`[DockerCLI] deleteManifest: Running 'docker image ls' to find images with digest ${digest}`);
         const images = await this.execDockerJson(['image', 'ls']);
+        this.logger.debug(`[DockerCLI] deleteManifest: Found ${images.length} local images, searching for matches`);
         const imageName = `${this.registryUrl}/${packageName}`;
+        const digestShort = digest.replace('sha256:', '');
+        this.logger.debug(`[DockerCLI] deleteManifest: Looking for images matching ${imageName} with digest prefix ${digestShort}`);
         let deleted = false;
         for (const image of images) {
-            if (image.Repository === imageName && image.ID.startsWith(digest.replace('sha256:', ''))) {
+            if (image.Repository === imageName && image.ID.startsWith(digestShort)) {
+                const fullImageName = `${image.Repository}:${image.Tag}`;
+                this.logger.debug(`[DockerCLI] deleteManifest: Found matching image ${fullImageName} (ID: ${image.ID})`);
                 try {
-                    await exec.exec('docker', ['image', 'rm', `${image.Repository}:${image.Tag}`], {
+                    this.logger.debug(`[DockerCLI] deleteManifest: Running 'docker image rm ${fullImageName}'`);
+                    await exec.exec('docker', ['image', 'rm', fullImageName], {
                         silent: !this.logger.verbose,
                     });
-                    this.logger.info(`Deleted local image ${image.Repository}:${image.Tag} (digest: ${digest})`);
+                    this.logger.info(`Deleted local image ${fullImageName} (digest: ${digest})`);
+                    this.logger.debug(`[DockerCLI] deleteManifest: Successfully deleted local image ${fullImageName}`);
                     deleted = true;
                 }
                 catch (error) {
-                    this.logger.debug(`Could not delete ${image.Repository}:${image.Tag}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                    this.logger.debug(`[DockerCLI] deleteManifest: Could not delete ${fullImageName}: ${errorMsg}`);
                 }
             }
         }
         if (!deleted) {
-            this.logger.debug(`No local images found with digest ${digest} for ${packageName}`);
+            this.logger.debug(`[DockerCLI] deleteManifest: No local images found with digest ${digest} for ${packageName}`);
+        }
+        else {
+            this.logger.debug(`[DockerCLI] deleteManifest: Completed deletion of manifest ${digest}`);
         }
     }
     async getReferrers(packageName, digest) {
-        // Docker CLI doesn't support referrers API
+        this.logger.debug(`[DockerCLI] getReferrers: Starting for package ${packageName}, digest ${digest}`);
+        this.logger.debug(`[DockerCLI] getReferrers: Docker CLI doesn't support referrers API, returning empty array`);
         return [];
     }
     supportsFeature(feature) {

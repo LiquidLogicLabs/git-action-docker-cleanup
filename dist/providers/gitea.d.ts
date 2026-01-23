@@ -17,6 +17,10 @@ export declare class GiteaProvider extends BaseProvider {
     authenticate(): Promise<void>;
     listPackages(): Promise<Package[]>;
     getPackageManifests(packageName: string): Promise<Manifest[]>;
+    /**
+     * Extract package name from full package path (e.g., "owner/package-name" -> "package-name")
+     */
+    private extractPackageName;
     private getPackageVersions;
     listTags(packageName: string): Promise<Tag[]>;
     deleteTag(packageName: string, tag: string): Promise<void>;

@@ -5,6 +5,7 @@ const ghcr_1 = require("./ghcr");
 const gitea_1 = require("./gitea");
 const dockerhub_1 = require("./dockerhub");
 const docker_cli_1 = require("./docker-cli");
+const generic_oci_1 = require("./generic-oci");
 const validation_1 = require("../utils/validation");
 /**
  * Create provider instance based on registry type
@@ -29,6 +30,8 @@ function createProvider(logger, config, httpClient) {
             return new dockerhub_1.DockerHubProvider(logger, config, httpClient);
         case 'docker':
             return new docker_cli_1.DockerCLIProvider(logger, config, httpClient);
+        case 'oci':
+            return new generic_oci_1.GenericOCIProvider(logger, config, httpClient);
         default:
             throw new Error(`Unknown registry type: ${registryType}`);
     }
@@ -50,8 +53,8 @@ function detectRegistryType(registryUrl, logger) {
             return provider.type;
         }
     }
-    // No match found, fall back to Docker CLI provider
-    logger.debug(`No provider match found for ${registryUrl}, falling back to Docker CLI provider`);
-    return 'docker';
+    // No match found, fall back to generic OCI provider
+    logger.debug(`No provider match found for ${registryUrl}, falling back to generic OCI provider`);
+    return 'oci';
 }
 //# sourceMappingURL=factory.js.map

@@ -1,10 +1,10 @@
 name: 'Docker Registry Cleanup'
-description: 'Delete untagged/tagged images from container registries. Supports GHCR, Gitea, Docker Hub, and any OCI-compliant registry via Docker CLI.'
+description: 'Delete untagged/tagged images from container registries. Supports GHCR, Gitea, Docker Hub, and any OCI-compliant registry (Harbor, Quay.io, ACR, etc.).'
 author: 'LiquidLogicLabs'
 inputs:
   # Registry configuration
   registry-type:
-    description: 'Registry type: ghcr, gitea, docker-hub, docker, or auto'
+    description: 'Registry type: ghcr, gitea, docker-hub, docker, oci, or auto'
     required: true
   registry-url:
     description: 'Registry base URL (required for gitea, docker, and auto; optional for ghcr/docker-hub)'

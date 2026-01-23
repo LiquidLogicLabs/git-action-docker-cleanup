@@ -5,6 +5,7 @@ import { GHCRProvider } from './ghcr';
 import { GiteaProvider } from './gitea';
 import { DockerHubProvider } from './dockerhub';
 import { DockerCLIProvider } from './docker-cli';
+import { GenericOCIProvider } from './generic-oci';
 import { matchRegistryUrl } from '../utils/validation';
 
 /**
@@ -37,6 +38,8 @@ export function createProvider(
       return new DockerHubProvider(logger, config, httpClient);
     case 'docker':
       return new DockerCLIProvider(logger, config, httpClient);
+    case 'oci':
+      return new GenericOCIProvider(logger, config, httpClient);
     default:
       throw new Error(`Unknown registry type: ${registryType}`);
   }
@@ -61,7 +64,7 @@ function detectRegistryType(registryUrl: string, logger: Logger): RegistryType {
     }
   }
 
-  // No match found, fall back to Docker CLI provider
-  logger.debug(`No provider match found for ${registryUrl}, falling back to Docker CLI provider`);
-  return 'docker';
+  // No match found, fall back to generic OCI provider
+  logger.debug(`No provider match found for ${registryUrl}, falling back to generic OCI provider`);
+  return 'oci';
 }

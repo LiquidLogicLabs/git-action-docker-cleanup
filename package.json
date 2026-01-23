@@ -18,6 +18,8 @@
     "test:act:verbose": "act workflow_dispatch -W .github/workflows/test.yml --eventpath .github/workflows/.act/event-workflow_call.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars -v",
     "test:act:ci": "act -W .github/workflows/ci.yml --env-file .act.env --secret-file .act.secrets --var-file .act.vars",
     "test:act:release": "act push --eventpath .github/workflows/.act/event-release.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars",
+    "test:act:e2e": "act workflow_dispatch -W .github/workflows/e2e-tests.yml --eventpath .github/workflows/.act/event-e2e-tests.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars",
+    "test:act:e2e:verbose": "act workflow_dispatch -W .github/workflows/e2e-tests.yml --eventpath .github/workflows/.act/event-e2e-tests.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars -v",
     "lint:act": "act -W .github/workflows/ci.yml -j lint --env-file .act.env --secret-file .act.secrets --var-file .act.vars"
   },
   "keywords": [

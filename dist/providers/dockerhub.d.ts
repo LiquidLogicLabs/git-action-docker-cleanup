@@ -10,10 +10,12 @@ export declare class DockerHubProvider extends BaseProvider {
     private readonly username?;
     private readonly password?;
     private readonly token?;
-    private readonly registryUrl;
+    protected readonly registryUrl = "https://registry-1.docker.io";
+    private cachedToken?;
+    private tokenExpiry?;
     constructor(logger: Logger, config: ProviderConfig, httpClient: HttpClient);
     protected getAuthHeaders(): Record<string, string>;
-    protected getDockerHubToken(): Promise<string>;
+    protected getDockerHubToken(packageName?: string): Promise<string>;
     protected getRegistryAuthHeaders(): Record<string, string>;
     authenticate(): Promise<void>;
     listPackages(): Promise<Package[]>;
