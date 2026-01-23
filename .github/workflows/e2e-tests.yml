@@ -62,7 +62,7 @@ jobs:
             url: ghcr.io
             registry_host: ghcr.io
             image_name_format: 'ghcr.io/{prefix}/e2e-test-image'
-            username: ${{ vars.E2E_GHCR_USERNAME || github.actor }}
+            username: ${{ vars.E2E_GHCR_USERNAME || github.repository_owner }}
             token_secret: GITHUB_TOKEN
             package_prefix: ${{ github.repository_owner }}
             skip_if_missing: false
