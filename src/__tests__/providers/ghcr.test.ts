@@ -68,6 +68,12 @@ describe('GHCRProvider', () => {
           headers: {},
         })
         .mockResolvedValueOnce({
+          data: { type: 'User' },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+        })
+        .mockResolvedValueOnce({
           data: [
             {
               id: 1,
@@ -108,6 +114,12 @@ describe('GHCRProvider', () => {
           headers: {},
         })
         .mockResolvedValueOnce({
+          data: { type: 'User' },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+        })
+        .mockResolvedValueOnce({
           data: [
             {
               id: 1,
@@ -134,6 +146,12 @@ describe('GHCRProvider', () => {
       httpClient.get
         .mockResolvedValueOnce({
           data: { login: 'test-owner' },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+        })
+        .mockResolvedValueOnce({
+          data: { type: 'User' },
           status: 200,
           statusText: 'OK',
           headers: {},

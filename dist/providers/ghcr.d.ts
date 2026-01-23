@@ -11,9 +11,11 @@ export declare class GHCRProvider extends BaseProvider {
     private readonly owner;
     private readonly repository;
     private readonly githubApiUrl;
+    private ownerApiBase?;
     constructor(logger: Logger, config: ProviderConfig, httpClient: HttpClient);
     protected getAuthHeaders(): Record<string, string>;
     protected getRegistryAuthHeaders(): Record<string, string>;
+    private getOwnerApiBase;
     authenticate(): Promise<void>;
     listPackages(): Promise<Package[]>;
     getPackageManifests(packageName: string): Promise<Manifest[]>;

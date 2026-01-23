@@ -250,26 +250,17 @@ class CleanupEngine {
                 // But we can still delete individual tags via Package API (e.g., Gitea, GHCR)
                 const hasExcludedTagsForManifest = hasExcludedTags &&
                     await this.hasExcludedTagsForManifest(image.package.name, image.manifest.digest);
-                // Delete tags first (even if excluded tags exist - individual tag deletion is supported by some providers)
-                // However, if excluded tags exist for this manifest, we need to be careful:
-                // - For providers that support individual tag deletion (Gitea Package API, GHCR Package API), we can delete tags
-                // - For providers that only support manifest deletion (OCI Registry API fallback), we should NOT delete tags
-                //   that share a manifest with excluded tags, as it would delete the excluded tags too
                 let allTagsDeleted = true;
                 let shouldSkipTagDeletion = false;
                 if (hasExcludedTagsForManifest) {
-                    // Check if provider supports individual tag deletion
-                    // Gitea and GHCR support it via their Package APIs, but fallback to OCI Registry API doesn't
-                    // For now, we'll try to delete tags and let the provider handle it
-                    // If the provider falls back to OCI Registry API, it will delete the manifest (and all tags)
-                    // We'll prevent manifest deletion later to protect excluded tags
                     this.logger.debug(`Manifest ${image.manifest.digest} has excluded tags - will attempt individual tag deletion but prevent manifest deletion`);
                 }
+                const deletedTagNames = [];
                 for (const tag of image.tags) {
                     try {
                         await this.provider.deleteTag(image.package.name, tag.name);
                         result.deletedTags.push(tag.name);
-                        this.logger.info(`Deleted tag ${tag.name} from ${image.package.name}`);
+                        deletedTagNames.push(tag.name);
                     }
                     catch (error) {
                         const errorMsg = `Failed to delete tag ${tag.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -277,6 +268,9 @@ class CleanupEngine {
                         result.errors.push(errorMsg);
                         allTagsDeleted = false;
                     }
+                }
+                if (deletedTagNames.length > 0) {
+                    this.logger.info(`Deleted ${deletedTagNames.length} tag(s) from ${image.package.name}: ${deletedTagNames.join(', ')}`);
                 }
                 // After tag deletion, check again if excluded tags still exist
                 // (in case the provider deleted the manifest via OCI Registry API fallback)
@@ -319,7 +313,7 @@ class CleanupEngine {
                             }
                         }
                         result.deletedCount++;
-                        this.logger.info(`Deleted manifest ${image.manifest.digest} from ${image.package.name}`);
+                        this.logger.debug(`Deleted manifest ${image.manifest.digest} from ${image.package.name}`);
                     }
                     catch (error) {
                         const errorMsg = `Failed to delete manifest ${image.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -332,7 +326,7 @@ class CleanupEngine {
                     try {
                         await this.provider.deleteManifest(image.package.name, image.manifest.digest);
                         result.deletedCount++;
-                        this.logger.info(`Deleted untagged manifest ${image.manifest.digest} from ${image.package.name}`);
+                        this.logger.debug(`Deleted untagged manifest ${image.manifest.digest} from ${image.package.name}`);
                     }
                     catch (error) {
                         const errorMsg = `Failed to delete untagged manifest ${image.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;

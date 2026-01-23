@@ -47,26 +47,23 @@ class GiteaProvider extends base_1.BaseProvider {
         };
     }
     async authenticate() {
-        this.logger.debug(`[Gitea] authenticate: Starting authentication with Gitea API at ${this.giteaApiUrl}`);
+        this.logger.debug(`[Gitea] Authenticating with Gitea API at ${this.giteaApiUrl}`);
         try {
-            // Test authentication by calling Gitea API
             const url = `${this.giteaApiUrl}/user`;
-            this.logger.debug(`[Gitea] authenticate: Calling ${url}`);
+            this.logger.debug(`[Gitea] Testing authentication with ${url}`);
             const response = await this.httpClient.get(url, this.getAuthHeaders());
-            this.logger.debug(`[Gitea] authenticate: Response status ${response.status}`);
             if (response.status === 200) {
                 this.authenticated = true;
-                this.logger.debug('[Gitea] authenticate: Successfully authenticated with Gitea');
+                this.logger.debug(`[Gitea] Authentication successful (status: ${response.status})`);
             }
             else {
-                this.logger.debug(`[Gitea] authenticate: Authentication failed with status ${response.status}`);
                 throw new types_1.AuthenticationError('Failed to authenticate with Gitea', 'gitea');
             }
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[Gitea] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[Gitea] Authentication error - Status: ${statusCode}, Message: ${errorMsg}`);
             if (error instanceof types_1.AuthenticationError) {
                 throw error;
             }
@@ -74,9 +71,8 @@ class GiteaProvider extends base_1.BaseProvider {
         }
     }
     async listPackages() {
-        this.logger.debug(`[Gitea] listPackages: Starting package discovery for owner ${this.owner}`);
+        this.logger.debug(`[Gitea] Listing all packages for owner: ${this.owner}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const packages = [];
@@ -116,9 +112,8 @@ class GiteaProvider extends base_1.BaseProvider {
         return packages;
     }
     async getPackageManifests(packageName) {
-        this.logger.debug(`[Gitea] getPackageManifests: Starting for package ${packageName}`);
+        this.logger.debug(`[Gitea] Getting all manifests for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const manifests = [];
@@ -126,15 +121,16 @@ class GiteaProvider extends base_1.BaseProvider {
             const packageVersions = await this.getPackageVersions(packageName);
             this.logger.debug(`[Gitea] getPackageManifests: Found ${packageVersions.length} package versions`);
             for (const version of packageVersions) {
-                this.logger.debug(`[Gitea] getPackageManifests: Fetching manifest for version ${version.id} (digest: ${version.digest})`);
+                const reference = version.digest || version.version;
+                this.logger.debug(`[Gitea] getPackageManifests: Fetching manifest for version ${version.version} (reference: ${reference})`);
                 try {
-                    const manifest = await this.getManifest(packageName, version.digest);
+                    const manifest = await this.getManifest(packageName, reference);
                     manifests.push(manifest);
                     this.logger.debug(`[Gitea] getPackageManifests: Successfully fetched manifest ${manifest.digest}`);
                 }
                 catch (error) {
                     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                    this.logger.debug(`[Gitea] getPackageManifests: Failed to get manifest for ${packageName}@${version.digest}: ${errorMsg}`);
+                    this.logger.debug(`[Gitea] getPackageManifests: Failed to get manifest for ${packageName}@${reference}: ${errorMsg}`);
                 }
             }
         }
@@ -163,119 +159,55 @@ class GiteaProvider extends base_1.BaseProvider {
         // Extract just the package name (without owner prefix)
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[Gitea] getPackageVersions: Extracted package name: ${packageNameOnly} (from ${packageName})`);
-        // Try the package endpoint - Gitea API might return a single package object with versions
-        const url = `${this.giteaApiUrl}/packages/${this.owner}/${packageNameOnly}?type=container`;
-        this.logger.debug(`[Gitea] getPackageVersions: Attempting single package endpoint: ${url}`);
+        const tags = await this.listTags(packageName);
+        const tagMap = new Map(tags.map(tag => [tag.name, tag]));
+        this.logger.debug(`[Gitea] getPackageVersions: Loaded ${tags.length} tags for digest mapping`);
+        const versions = [];
+        let page = 1;
+        const limit = 50;
         try {
-            // First try as a single package object with versions array
-            const response = await this.httpClient.get(url, this.getAuthHeaders());
-            this.logger.debug(`[Gitea] getPackageVersions: Single package endpoint response status ${response.status}`);
-            if (response.data?.versions) {
-                this.logger.debug(`[Gitea] getPackageVersions: Found ${response.data.versions.length} versions in single package response`);
-                // Extract digests from package versions
-                const versions = [];
-                for (const version of response.data.versions) {
-                    this.logger.debug(`[Gitea] getPackageVersions: Processing version ${version.id} (tag: ${version.version})`);
-                    // Try to get digest from tags
-                    try {
-                        const tags = await this.listTags(packageName); // listTags handles full package name
-                        const tag = tags.find(t => t.name === version.version);
-                        if (tag) {
-                            versions.push({
-                                id: version.id,
-                                digest: tag.digest,
-                                created_at: version.created_at,
-                            });
-                            this.logger.debug(`[Gitea] getPackageVersions: Mapped version ${version.id} to digest ${tag.digest}`);
-                        }
-                        else {
-                            this.logger.debug(`[Gitea] getPackageVersions: Could not find tag ${version.version} in tags list`);
-                        }
-                    }
-                    catch (error) {
-                        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                        this.logger.debug(`[Gitea] getPackageVersions: Could not get digest for version ${version.id}: ${errorMsg}`);
-                    }
+            while (true) {
+                const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
+                this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);
+                const response = await this.httpClient.get(url, this.getAuthHeaders());
+                this.logger.debug(`[Gitea] getPackageVersions: Response status ${response.status}, versions: ${response.data?.length || 0}`);
+                if (!response.data || response.data.length === 0) {
+                    this.logger.debug(`[Gitea] getPackageVersions: No more versions, stopping pagination`);
+                    break;
                 }
-                this.logger.debug(`[Gitea] getPackageVersions: Returning ${versions.length} versions with digests`);
-                return versions;
-            }
-            else {
-                this.logger.debug(`[Gitea] getPackageVersions: Single package response has no versions array`);
-            }
-        }
-        catch (error) {
-            // If single package endpoint fails, try listing all packages and finding the one we need
-            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[Gitea] getPackageVersions: Single package endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
-            try {
-                this.logger.debug(`[Gitea] getPackageVersions: Falling back to listPackages approach`);
-                // List all packages and find the one matching our package name
-                const allPackages = await this.listPackages();
-                this.logger.debug(`[Gitea] getPackageVersions: Listed ${allPackages.length} packages, searching for ${packageNameOnly}`);
-                const matchingPackage = allPackages.find(pkg => {
-                    const pkgNameOnly = this.extractPackageName(pkg.name);
-                    return pkgNameOnly === packageNameOnly || pkg.name === packageName || pkg.name === packageNameOnly;
-                });
-                if (matchingPackage) {
-                    this.logger.debug(`[Gitea] getPackageVersions: Found matching package: ${matchingPackage.name} (id: ${matchingPackage.id})`);
-                    // Try to get versions using the package ID or name from listPackages
-                    const packageIdUrl = `${this.giteaApiUrl}/packages/${this.owner}/${matchingPackage.name}?type=container`;
-                    this.logger.debug(`[Gitea] getPackageVersions: Attempting package endpoint with matched name: ${packageIdUrl}`);
-                    const packageResponse = await this.httpClient.get(packageIdUrl, this.getAuthHeaders());
-                    this.logger.debug(`[Gitea] getPackageVersions: Package response status ${packageResponse.status}, versions: ${packageResponse.data?.versions?.length || 0}`);
-                    if (packageResponse.data?.versions) {
-                        this.logger.debug(`[Gitea] getPackageVersions: Processing ${packageResponse.data.versions.length} versions from matched package`);
-                        // Extract digests from package versions
-                        const versions = [];
-                        for (const version of packageResponse.data.versions) {
-                            this.logger.debug(`[Gitea] getPackageVersions: Processing version ${version.id} (tag: ${version.version})`);
-                            // Try to get digest from tags
-                            try {
-                                const tags = await this.listTags(packageName);
-                                const tag = tags.find(t => t.name === version.version);
-                                if (tag) {
-                                    versions.push({
-                                        id: version.id,
-                                        digest: tag.digest,
-                                        created_at: version.created_at,
-                                    });
-                                    this.logger.debug(`[Gitea] getPackageVersions: Mapped version ${version.id} to digest ${tag.digest}`);
-                                }
-                                else {
-                                    this.logger.debug(`[Gitea] getPackageVersions: Could not find tag ${version.version} in tags list`);
-                                }
-                            }
-                            catch (error) {
-                                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                                this.logger.debug(`[Gitea] getPackageVersions: Could not get digest for version ${version.id}: ${errorMsg}`);
-                            }
-                        }
-                        this.logger.debug(`[Gitea] getPackageVersions: Returning ${versions.length} versions with digests (via listPackages fallback)`);
-                        return versions;
+                for (const pkgVersion of response.data) {
+                    const tag = tagMap.get(pkgVersion.version);
+                    versions.push({
+                        version: pkgVersion.version,
+                        digest: tag?.digest,
+                        created_at: pkgVersion.created_at,
+                    });
+                    if (tag) {
+                        this.logger.debug(`[Gitea] getPackageVersions: Mapped version ${pkgVersion.version} to digest ${tag.digest}`);
                     }
                     else {
-                        this.logger.debug(`[Gitea] getPackageVersions: Matched package response has no versions array`);
+                        this.logger.debug(`[Gitea] getPackageVersions: No digest found for version ${pkgVersion.version}`);
                     }
                 }
-                else {
-                    this.logger.debug(`[Gitea] getPackageVersions: No matching package found in ${allPackages.length} packages`);
+                if (response.data.length < limit) {
+                    break;
                 }
+                page++;
             }
-            catch (listError) {
-                const errorMsg = listError instanceof Error ? listError.message : 'Unknown error';
-                const statusCode = listError instanceof Error && 'statusCode' in listError ? listError.statusCode : 'unknown';
-                this.logger.debug(`[Gitea] getPackageVersions: listPackages fallback failed - Status: ${statusCode}, Message: ${errorMsg}`);
-            }
+            this.logger.debug(`[Gitea] getPackageVersions: Returning ${versions.length} versions with digests`);
+            return versions;
+        }
+        catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
+            this.logger.debug(`[Gitea] getPackageVersions: listPackageVersions endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
         }
         this.logger.debug(`[Gitea] getPackageVersions: No versions found, returning empty array`);
         return [];
     }
     async listTags(packageName) {
-        this.logger.debug(`[Gitea] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[Gitea] Listing all tags for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getTagsUrl(packageName);
@@ -317,95 +249,49 @@ class GiteaProvider extends base_1.BaseProvider {
         }
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[Gitea] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[Gitea] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         try {
-            // Get manifest digest for the tag
-            this.logger.debug(`[Gitea] deleteTag: Fetching manifest for tag ${tag}`);
+            const packageNameOnly = this.extractPackageName(packageName);
+            const deleteUrl = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}/${tag}`;
+            this.logger.debug(`[Gitea] Deleting version ${tag} via Package API: ${deleteUrl}`);
+            await this.httpClient.delete(deleteUrl, this.getAuthHeaders());
+            this.logger.info(`Deleted tag ${tag} from package ${packageName}`);
+            return;
+        }
+        catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
+            this.logger.debug(`[Gitea] Package API deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[Gitea] Falling back to OCI Registry API (with safety check)`);
+        }
+        try {
             const manifest = await this.getManifest(packageName, tag);
-            this.logger.debug(`[Gitea] deleteTag: Manifest digest: ${manifest.digest}`);
-            // Try to delete via Gitea Package API first
-            // In Gitea, each tag is a separate package version, so we need to find the version by tag name
-            try {
-                this.logger.debug(`[Gitea] deleteTag: Attempting deletion via Gitea Package API`);
-                const packageVersions = await this.getPackageVersions(packageName);
-                this.logger.debug(`[Gitea] deleteTag: Found ${packageVersions.length} package versions`);
-                const version = packageVersions.find(v => {
-                    // Try to match by tag name - we need to get the tag for this version
-                    // Since we stored digest in getPackageVersions, we can match by digest
-                    return v.digest === manifest.digest;
-                });
-                if (version) {
-                    this.logger.debug(`[Gitea] deleteTag: Found version ${version.id} matching manifest digest ${manifest.digest}`);
-                    // Find the version by tag name by checking all versions
-                    const packageNameOnly = this.extractPackageName(packageName);
-                    const packageUrl = `${this.giteaApiUrl}/packages/${this.owner}/${packageNameOnly}?type=container`;
-                    this.logger.debug(`[Gitea] deleteTag: Fetching package details from ${packageUrl}`);
-                    const packageResponse = await this.httpClient.get(packageUrl, this.getAuthHeaders());
-                    this.logger.debug(`[Gitea] deleteTag: Package response status ${packageResponse.status}, versions: ${packageResponse.data?.versions?.length || 0}`);
-                    if (packageResponse.data?.versions) {
-                        // Find version by tag name (version.version contains the tag name)
-                        const versionByTag = packageResponse.data.versions.find(v => v.version === tag);
-                        if (versionByTag) {
-                            const url = `${this.giteaApiUrl}/packages/${this.owner}/${packageNameOnly}/versions/${versionByTag.id}`;
-                            this.logger.debug(`[Gitea] deleteTag: Deleting version ${versionByTag.id} via Package API: ${url}`);
-                            await this.httpClient.delete(url, this.getAuthHeaders());
-                            this.logger.info(`Deleted tag ${tag} (version ${versionByTag.id}) from package ${packageName}`);
-                            this.logger.debug(`[Gitea] deleteTag: Successfully deleted via Package API`);
-                            return;
-                        }
-                        else {
-                            this.logger.debug(`[Gitea] deleteTag: Version with tag name ${tag} not found in package versions`);
-                        }
-                    }
-                    else {
-                        this.logger.debug(`[Gitea] deleteTag: Package response has no versions array`);
-                    }
-                }
-                else {
-                    this.logger.debug(`[Gitea] deleteTag: No version found matching manifest digest ${manifest.digest}`);
-                }
-            }
-            catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-                this.logger.debug(`[Gitea] deleteTag: Package API deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
-                this.logger.debug(`[Gitea] deleteTag: Falling back to OCI Registry API (with safety check)`);
-            }
+            this.logger.debug(`[Gitea] Manifest digest: ${manifest.digest}`);
             // Fallback: delete via OCI Registry V2 API
-            // WARNING: This will delete the entire manifest and ALL tags pointing to it
-            // Only use this fallback if we're sure there are no other tags we want to keep
             // Check if there are other tags pointing to this manifest
             try {
-                this.logger.debug(`[Gitea] deleteTag: Checking for other tags pointing to manifest ${manifest.digest}`);
                 const allTags = await this.listTags(packageName);
                 const tagsForThisManifest = allTags.filter(t => t.digest === manifest.digest);
-                this.logger.debug(`[Gitea] deleteTag: Found ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest}: ${tagsForThisManifest.map(t => t.name).join(', ')}`);
+                this.logger.debug(`[Gitea] Found ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest}: ${tagsForThisManifest.map(t => t.name).join(', ')}`);
                 if (tagsForThisManifest.length > 1) {
-                    // There are other tags pointing to this manifest
-                    // Deleting via OCI Registry API would delete all tags, which we don't want
                     const errorMsg = `Cannot delete tag ${tag} via OCI Registry API: Manifest ${manifest.digest} has ${tagsForThisManifest.length} tags. ` +
                         `Deleting the manifest would delete all tags. Gitea Package API deletion failed, and OCI Registry API fallback is not safe.`;
-                    this.logger.debug(`[Gitea] deleteTag: ${errorMsg}`);
+                    this.logger.debug(`[Gitea] ${errorMsg}`);
                     throw new Error(errorMsg);
                 }
-                // Only one tag points to this manifest, safe to delete via OCI Registry API
-                this.logger.debug(`[Gitea] deleteTag: Only one tag points to manifest, safe to delete via OCI Registry API`);
+                this.logger.debug(`[Gitea] Only one tag points to manifest, safe to delete via OCI Registry API`);
                 await this.deleteManifest(packageName, manifest.digest);
                 this.logger.info(`Deleted tag ${tag} via OCI Registry API from package ${packageName}`);
-                this.logger.debug(`[Gitea] deleteTag: Successfully deleted via OCI Registry API`);
             }
             catch (deleteError) {
-                // If manifest is already deleted (Resource not found), the tag is effectively deleted
                 const errorMsg = deleteError instanceof Error ? deleteError.message : 'Unknown error';
                 const statusCode = deleteError instanceof Error && 'statusCode' in deleteError ? deleteError.statusCode : 'unknown';
-                this.logger.debug(`[Gitea] deleteTag: OCI Registry API deletion error - Status: ${statusCode}, Message: ${errorMsg}`);
+                this.logger.debug(`[Gitea] OCI Registry API deletion error - Status: ${statusCode}, Message: ${errorMsg}`);
                 if (errorMsg.includes('Resource not found') || errorMsg.includes('404') || errorMsg.includes('Not Found')) {
                     this.logger.info(`Tag ${tag} already deleted (manifest not found)`);
-                    this.logger.debug(`[Gitea] deleteTag: Tag already deleted, returning successfully`);
                     return;
                 }
                 throw deleteError;
@@ -414,18 +300,17 @@ class GiteaProvider extends base_1.BaseProvider {
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[Gitea] deleteTag: Overall error - Status: ${statusCode}, Message: ${errorMsg}`);
-            // If the error is "Resource not found", the tag/manifest is already deleted
+            this.logger.debug(`[Gitea] Overall error - Status: ${statusCode}, Message: ${errorMsg}`);
             if (errorMsg.includes('Resource not found') || errorMsg.includes('404') || errorMsg.includes('Not Found')) {
                 this.logger.info(`Tag ${tag} already deleted`);
-                this.logger.debug(`[Gitea] deleteTag: Tag already deleted, returning successfully`);
                 return;
             }
-            this.logger.error(`[Gitea] deleteTag: Failed to delete tag ${tag}: ${errorMsg}`);
+            this.logger.error(`[Gitea] Failed to delete tag ${tag}: ${errorMsg}`);
             throw new Error(`Failed to delete tag ${tag}: ${errorMsg}`);
         }
     }
     async getManifest(packageName, reference) {
+        this.logger.debug(`[Gitea] Fetching manifest for package: ${packageName}, reference: ${reference}`);
         if (!this.authenticated) {
             await this.authenticate();
         }
@@ -456,6 +341,7 @@ class GiteaProvider extends base_1.BaseProvider {
         return this.convertToManifest(digest, ociManifest);
     }
     async deleteManifest(packageName, digest) {
+        this.logger.debug(`[Gitea] Deleting manifest: ${digest} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();
         }
@@ -475,6 +361,7 @@ class GiteaProvider extends base_1.BaseProvider {
         }
     }
     async getReferrers(packageName, digest) {
+        this.logger.debug(`[Gitea] Fetching referrers for package: ${packageName}, digest: ${digest}`);
         if (!this.supportsFeature('REFERRERS')) {
             return [];
         }

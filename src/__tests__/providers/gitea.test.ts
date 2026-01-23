@@ -143,41 +143,6 @@ describe('GiteaProvider', () => {
           status: 200,
           statusText: 'OK',
           headers: {},
-        })
-        .mockResolvedValueOnce({
-          data: JSON.stringify({
-            schemaVersion: 2,
-            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
-            config: { digest: 'sha256:config1', size: 100 },
-            layers: [],
-          }),
-          status: 200,
-          statusText: 'OK',
-          headers: { 'docker-content-digest': 'sha256:digest1' },
-        })
-        .mockResolvedValueOnce({
-          data: [
-            { id: 1, digest: 'sha256:digest1', created_at: '2024-01-01T00:00:00Z' },
-          ],
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-        })
-        .mockResolvedValueOnce({
-          data: {
-            id: 1,
-            name: 'package1',
-            versions: [
-              {
-                id: 1,
-                version: 'v1.0',
-                created_at: '2024-01-01T00:00:00Z',
-              },
-            ],
-          },
-          status: 200,
-          statusText: 'OK',
-          headers: {},
         });
 
       httpClient.delete.mockResolvedValueOnce({
@@ -189,7 +154,12 @@ describe('GiteaProvider', () => {
 
       await provider.deleteTag('test-owner/package1', 'v1.0');
 
-      expect(httpClient.delete).toHaveBeenCalled();
+      expect(httpClient.delete).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/packages/test-owner/container/package1/v1.0'),
+        expect.objectContaining({
+          Authorization: expect.stringContaining('test-token'),
+        })
+      );
     });
   });
 

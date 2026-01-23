@@ -118,7 +118,7 @@ class DockerCLIProvider {
         return results;
     }
     async authenticate() {
-        this.logger.debug(`[DockerCLI] authenticate: Starting authentication with registry ${this.registryUrl}`);
+        this.logger.debug(`[DockerCLI] Authenticating with registry: ${this.registryUrl} (optional for local operations)`);
         // Authentication is optional for Docker CLI provider since it only works with local images
         // If credentials are provided, we'll login to the registry (useful for pulling images or if Docker has cached credentials)
         const username = this.config.username;
@@ -156,10 +156,9 @@ class DockerCLIProvider {
         this.logger.debug(`[DockerCLI] authenticate: Authentication complete (authenticated: ${this.authenticated})`);
     }
     async listPackages() {
-        this.logger.debug(`[DockerCLI] listPackages: Starting package discovery from local Docker images`);
+        this.logger.debug(`[DockerCLI] Listing all packages from local Docker images (registry: ${this.registryUrl})`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Use docker image ls to list local images, filter by registry URL
@@ -189,10 +188,9 @@ class DockerCLIProvider {
         return packages;
     }
     async getPackageManifests(packageName) {
-        this.logger.debug(`[DockerCLI] getPackageManifests: Starting for package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Getting all manifests for package: ${packageName} from local Docker images`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const manifests = [];
@@ -215,10 +213,9 @@ class DockerCLIProvider {
         return manifests;
     }
     async listTags(packageName) {
-        this.logger.debug(`[DockerCLI] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Listing all tags for package: ${packageName} from local Docker images`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Use docker image ls to list local images for this package
@@ -256,10 +253,9 @@ class DockerCLIProvider {
         return tags;
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[DockerCLI] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const imageName = this.getImageName(packageName, tag);
@@ -286,10 +282,9 @@ class DockerCLIProvider {
         }
     }
     async getManifest(packageName, reference) {
-        this.logger.debug(`[DockerCLI] getManifest: Starting for package ${packageName}, reference ${reference}`);
+        this.logger.debug(`[DockerCLI] Inspecting local Docker image manifest: ${packageName}:${reference}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] getManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const imageName = this.getImageName(packageName, reference);
@@ -354,10 +349,9 @@ class DockerCLIProvider {
         }
     }
     async deleteManifest(packageName, digest) {
-        this.logger.debug(`[DockerCLI] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Deleting local Docker images matching manifest digest: ${digest} from package: ${packageName}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] deleteManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Try to find local images with this digest and delete them
@@ -395,8 +389,7 @@ class DockerCLIProvider {
         }
     }
     async getReferrers(packageName, digest) {
-        this.logger.debug(`[DockerCLI] getReferrers: Starting for package ${packageName}, digest ${digest}`);
-        this.logger.debug(`[DockerCLI] getReferrers: Docker CLI doesn't support referrers API, returning empty array`);
+        this.logger.debug(`[DockerCLI] Fetching referrers for package: ${packageName}, digest: ${digest} (Docker CLI doesn't support referrers API, returning empty array)`);
         return [];
     }
     supportsFeature(feature) {

@@ -102,7 +102,6 @@ async function run(): Promise<void> {
     });
 
     // Create provider
-    logger.info(`Creating ${registryType} provider...`);
     const provider = createProvider(logger, providerConfig, httpClient);
 
     // Authenticate
@@ -113,7 +112,6 @@ async function run(): Promise<void> {
     const engine = new CleanupEngine(provider, cleanupConfig, logger);
 
     // Run cleanup
-    logger.info('Starting cleanup process...');
     const result = await engine.run(packages);
 
     // Set outputs

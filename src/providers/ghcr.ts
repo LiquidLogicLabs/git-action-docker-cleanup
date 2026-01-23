@@ -22,6 +22,7 @@ export class GHCRProvider extends BaseProvider {
   private readonly owner: string;
   private readonly repository: string;
   private readonly githubApiUrl = 'https://api.github.com';
+  private ownerApiBase?: 'users' | 'orgs';
 
   constructor(logger: Logger, config: ProviderConfig, httpClient: HttpClient) {
     // Set default registry URL for GHCR if not provided
@@ -58,27 +59,36 @@ export class GHCRProvider extends BaseProvider {
     };
   }
 
+  private async getOwnerApiBase(): Promise<'users' | 'orgs'> {
+    if (this.ownerApiBase) {
+      return this.ownerApiBase;
+    }
+
+    const url = `${this.githubApiUrl}/users/${this.owner}`;
+    this.logger.debug(`[GHCR] getOwnerApiBase: Fetching owner type from ${url}`);
+    const response = await this.httpClient.get<{ type?: string }>(url, this.getAuthHeaders());
+    this.ownerApiBase = response.data?.type === 'Organization' ? 'orgs' : 'users';
+    this.logger.debug(`[GHCR] getOwnerApiBase: Resolved owner type as ${this.ownerApiBase}`);
+    return this.ownerApiBase;
+  }
+
   async authenticate(): Promise<void> {
-    this.logger.debug(`[GHCR] authenticate: Starting authentication with GitHub API at ${this.githubApiUrl}`);
-    
+    this.logger.debug(`[GHCR] Authenticating with GitHub API`);
     try {
-      // Test authentication by calling GitHub API
       const url = `${this.githubApiUrl}/user`;
-      this.logger.debug(`[GHCR] authenticate: Calling ${url}`);
+      this.logger.debug(`[GHCR] Testing authentication with ${url}`);
       const response = await this.httpClient.get(url, this.getAuthHeaders());
-      this.logger.debug(`[GHCR] authenticate: Response status ${response.status}`);
       
       if (response.status === 200) {
         this.authenticated = true;
-        this.logger.debug('[GHCR] authenticate: Successfully authenticated with GitHub');
+        this.logger.debug(`[GHCR] Authentication successful (status: ${response.status})`);
       } else {
-        this.logger.debug(`[GHCR] authenticate: Authentication failed with status ${response.status}`);
         throw new AuthenticationError('Failed to authenticate with GitHub', 'ghcr');
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[GHCR] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+      this.logger.debug(`[GHCR] Authentication error - Status: ${statusCode}, Message: ${errorMsg}`);
       
       if (error instanceof AuthenticationError) {
         throw error;
@@ -91,10 +101,8 @@ export class GHCRProvider extends BaseProvider {
   }
 
   async listPackages(): Promise<Package[]> {
-    this.logger.debug(`[GHCR] listPackages: Starting package discovery for owner ${this.owner}`);
-    
+    this.logger.debug(`[GHCR] Listing all packages for owner: ${this.owner}`);
     if (!this.authenticated) {
-      this.logger.debug(`[GHCR] listPackages: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -102,9 +110,11 @@ export class GHCRProvider extends BaseProvider {
     let page = 1;
     const perPage = 100;
 
+    const ownerApiBase = await this.getOwnerApiBase();
+
     while (true) {
-      const url = `${this.githubApiUrl}/users/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
-      this.logger.debug(`[GHCR] listPackages: Fetching page ${page} from ${url}`);
+      const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
+      this.logger.debug(`[GHCR] Fetching packages page ${page}`);
       
       try {
         const response = await this.httpClient.get<Array<{
@@ -116,10 +126,9 @@ export class GHCRProvider extends BaseProvider {
           updated_at: string;
         }>>(url, this.getAuthHeaders());
 
-        this.logger.debug(`[GHCR] listPackages: Response status ${response.status}, received ${response.data?.length || 0} packages`);
+        this.logger.debug(`[GHCR] Response: ${response.status}, ${response.data?.length || 0} packages`);
 
         if (!response.data || response.data.length === 0) {
-          this.logger.debug(`[GHCR] listPackages: No more packages, stopping pagination`);
           break;
         }
 
@@ -132,11 +141,9 @@ export class GHCRProvider extends BaseProvider {
             createdAt: new Date(pkg.created_at),
             updatedAt: new Date(pkg.updated_at),
           });
-          this.logger.debug(`[GHCR] listPackages: Found package ${pkg.name} (id: ${pkg.id})`);
         }
 
         if (response.data.length < perPage) {
-          this.logger.debug(`[GHCR] listPackages: Last page reached (${response.data.length} < ${perPage})`);
           break;
         }
 
@@ -144,25 +151,22 @@ export class GHCRProvider extends BaseProvider {
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-        this.logger.debug(`[GHCR] listPackages: Error on page ${page} - Status: ${statusCode}, Message: ${errorMsg}`);
+        this.logger.debug(`[GHCR] Error on page ${page} - Status: ${statusCode}, Message: ${errorMsg}`);
         
         if (error instanceof NotFoundError) {
-          this.logger.debug(`[GHCR] listPackages: Not found error, stopping pagination`);
           break;
         }
         throw error;
       }
     }
 
-    this.logger.debug(`[GHCR] listPackages: Completed, found ${packages.length} total packages`);
+    this.logger.debug(`[GHCR] Found ${packages.length} total packages`);
     return packages;
   }
 
   async getPackageManifests(packageName: string): Promise<Manifest[]> {
-    this.logger.debug(`[GHCR] getPackageManifests: Starting for package ${packageName}`);
-    
+    this.logger.debug(`[GHCR] Getting all manifests for package: ${packageName}`);
     if (!this.authenticated) {
-      this.logger.debug(`[GHCR] getPackageManifests: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -218,12 +222,12 @@ export class GHCRProvider extends BaseProvider {
     // Extract just the package name (without owner prefix) for GitHub API
     const packageNameOnly = this.extractPackageName(packageName);
     this.logger.debug(`[GHCR] getPackageVersions: Extracted package name: ${packageNameOnly} (from ${packageName})`);
-    
-    // Try user endpoint first
-    let url = `${this.githubApiUrl}/users/${this.owner}/packages/container/${packageNameOnly}/versions`;
-    this.logger.debug(`[GHCR] getPackageVersions: Attempting user endpoint: ${url}`);
+
+    const ownerApiBase = await this.getOwnerApiBase();
+    const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+    this.logger.debug(`[GHCR] getPackageVersions: Fetching versions from ${url}`);
+
     let response;
-    
     try {
       response = await this.httpClient.get<Array<{
         id: number;
@@ -231,34 +235,12 @@ export class GHCRProvider extends BaseProvider {
         metadata: { container: { tags: string[] } };
         created_at: string;
       }>>(url, this.getAuthHeaders());
-      this.logger.debug(`[GHCR] getPackageVersions: User endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
+      this.logger.debug(`[GHCR] getPackageVersions: Response status ${response.status}, versions: ${response.data?.length || 0}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[GHCR] getPackageVersions: User endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
-      
-      // If user endpoint fails with 404, try org endpoint
-      if (error instanceof Error && (error.message.includes('404') || error.message.includes('Not Found'))) {
-        url = `${this.githubApiUrl}/orgs/${this.owner}/packages/container/${packageNameOnly}/versions`;
-        this.logger.debug(`[GHCR] getPackageVersions: Trying org endpoint: ${url}`);
-        try {
-          response = await this.httpClient.get<Array<{
-            id: number;
-            name: string;
-            metadata: { container: { tags: string[] } };
-            created_at: string;
-          }>>(url, this.getAuthHeaders());
-          this.logger.debug(`[GHCR] getPackageVersions: Org endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
-        } catch (orgError) {
-          const orgErrorMsg = orgError instanceof Error ? orgError.message : 'Unknown error';
-          const orgStatusCode = orgError instanceof Error && 'statusCode' in orgError ? (orgError as any).statusCode : 'unknown';
-          this.logger.debug(`[GHCR] getPackageVersions: Org endpoint also failed - Status: ${orgStatusCode}, Message: ${orgErrorMsg}`);
-          // If both fail, rethrow the original error
-          throw error;
-        }
-      } else {
-        throw error;
-      }
+      this.logger.debug(`[GHCR] getPackageVersions: Request failed - Status: ${statusCode}, Message: ${errorMsg}`);
+      return [];
     }
 
     if (!response.data) {
@@ -277,19 +259,18 @@ export class GHCRProvider extends BaseProvider {
   }
 
   async listTags(packageName: string): Promise<Tag[]> {
-    this.logger.debug(`[GHCR] listTags: Starting for package ${packageName}`);
-    
+    this.logger.debug(`[GHCR] Listing all tags for package: ${packageName}`);
     if (!this.authenticated) {
-      this.logger.debug(`[GHCR] listTags: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
     // Use GitHub Package API to get tags - no need for OCI Registry V2 API
     const packageNameOnly = this.extractPackageName(packageName);
     this.logger.debug(`[GHCR] listTags: Extracted package name: ${packageNameOnly}`);
-    
-    let url = `${this.githubApiUrl}/users/${this.owner}/packages/container/${packageNameOnly}/versions`;
-    this.logger.debug(`[GHCR] listTags: Attempting user endpoint: ${url}`);
+
+    const ownerApiBase = await this.getOwnerApiBase();
+    const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+    this.logger.debug(`[GHCR] listTags: Fetching versions from ${url}`);
     let response;
     
     try {
@@ -299,34 +280,13 @@ export class GHCRProvider extends BaseProvider {
         metadata: { container: { tags: string[] } };
         created_at: string;
       }>>(url, this.getAuthHeaders());
-      this.logger.debug(`[GHCR] listTags: User endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
+      this.logger.debug(`[GHCR] listTags: Response status ${response.status}, versions: ${response.data?.length || 0}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[GHCR] listTags: User endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
-      
-      // If user endpoint fails, try org endpoint
-      if (error instanceof Error && (error.message.includes('404') || error.message.includes('Not Found'))) {
-        url = `${this.githubApiUrl}/orgs/${this.owner}/packages/container/${packageNameOnly}/versions`;
-        this.logger.debug(`[GHCR] listTags: Trying org endpoint: ${url}`);
-        try {
-          response = await this.httpClient.get<Array<{
-            id: number;
-            name: string;
-            metadata: { container: { tags: string[] } };
-            created_at: string;
-          }>>(url, this.getAuthHeaders());
-          this.logger.debug(`[GHCR] listTags: Org endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
-        } catch (orgError) {
-          const orgErrorMsg = orgError instanceof Error ? orgError.message : 'Unknown error';
-          this.logger.debug(`[GHCR] listTags: Org endpoint also failed - Status: ${statusCode}, Message: ${orgErrorMsg}`);
-          this.logger.warning(`Failed to get package versions: ${errorMsg}`);
-          return [];
-        }
-      } else {
-        this.logger.warning(`Failed to get package versions: ${errorMsg}`);
-        return [];
-      }
+      this.logger.debug(`[GHCR] listTags: Request failed - Status: ${statusCode}, Message: ${errorMsg}`);
+      this.logger.warning(`Failed to get package versions: ${errorMsg}`);
+      return [];
     }
 
     if (!response.data) {
@@ -367,91 +327,55 @@ export class GHCRProvider extends BaseProvider {
   }
 
   async deleteTag(packageName: string, tag: string): Promise<void> {
-    this.logger.debug(`[GHCR] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
-    
+    this.logger.debug(`[GHCR] Deleting tag: ${tag} from package: ${packageName}`);
     if (!this.authenticated) {
-      this.logger.debug(`[GHCR] deleteTag: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
-    // Find the package version by tag name using GitHub Package API
-    this.logger.debug(`[GHCR] deleteTag: Finding package version for tag ${tag}`);
     const packageVersions = await this.getPackageVersions(packageName);
-    this.logger.debug(`[GHCR] deleteTag: Found ${packageVersions.length} package versions`);
+    this.logger.debug(`[GHCR] Found ${packageVersions.length} package versions`);
     
     const version = packageVersions.find(v => v.tags.includes(tag));
     
     if (!version) {
-      this.logger.debug(`[GHCR] deleteTag: Version not found for tag ${tag}`);
       throw new Error(`Version not found for tag ${tag} in package ${packageName}`);
     }
 
-    this.logger.debug(`[GHCR] deleteTag: Found version ${version.id} with ${version.tags.length} tags: ${version.tags.join(', ')}`);
+    this.logger.debug(`[GHCR] Version ${version.id} has ${version.tags.length} tags: ${version.tags.join(', ')}`);
 
     // GHCR limitation: When multiple tags point to the same version, deleting a tag deletes the entire version
-    // GitHub doesn't allow deleting the last tagged version of a package
-    // If this version has multiple tags and it's the only version, we can't delete individual tags
-    // Check if there are other versions with tags
     const otherVersionsWithTags = packageVersions.filter(v => v.id !== version.id && v.tags.length > 0);
-    this.logger.debug(`[GHCR] deleteTag: Other versions with tags: ${otherVersionsWithTags.length}`);
     
     if (version.tags.length > 1 && otherVersionsWithTags.length === 0) {
-      // This is the only version and it has multiple tags - can't delete individual tags
       const errorMsg = `Cannot delete tag ${tag}: This is the only version and it has multiple tags. GitHub Package API does not support deleting individual tags when all tags point to the same version.`;
-      this.logger.debug(`[GHCR] deleteTag: ${errorMsg}`);
+      this.logger.debug(`[GHCR] ${errorMsg}`);
       throw new Error(errorMsg);
     }
 
     const packageNameOnly = this.extractPackageName(packageName);
-    let url = `${this.githubApiUrl}/users/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
-    this.logger.debug(`[GHCR] deleteTag: Attempting deletion via user endpoint: ${url}`);
+    const ownerApiBase = await this.getOwnerApiBase();
+    const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
+    this.logger.debug(`[GHCR] Deleting version ${version.id} via ${ownerApiBase} endpoint`);
     
     try {
       const response = await this.httpClient.delete(url, this.getAuthHeaders());
-      this.logger.debug(`[GHCR] deleteTag: User endpoint deletion response status ${response.status}`);
+      this.logger.debug(`[GHCR] Deletion response: ${response.status}`);
       this.logger.info(`Deleted tag ${tag} (version ${version.id}) from package ${packageName}`);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[GHCR] deleteTag: User endpoint deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
+      this.logger.debug(`[GHCR] Deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
       
-      // If user endpoint fails, try org endpoint
-      if (error instanceof Error && (error.message.includes('404') || error.message.includes('Not Found'))) {
-        url = `${this.githubApiUrl}/orgs/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
-        this.logger.debug(`[GHCR] deleteTag: Trying org endpoint: ${url}`);
-        try {
-          const orgResponse = await this.httpClient.delete(url, this.getAuthHeaders());
-          this.logger.debug(`[GHCR] deleteTag: Org endpoint deletion response status ${orgResponse.status}`);
-          this.logger.info(`Deleted tag ${tag} (version ${version.id}) from package ${packageName}`);
-        } catch (orgError) {
-          const orgErrorMsg = orgError instanceof Error ? orgError.message : 'Unknown error';
-          const orgStatusCode = orgError instanceof Error && 'statusCode' in orgError ? (orgError as any).statusCode : 'unknown';
-          this.logger.debug(`[GHCR] deleteTag: Org endpoint deletion failed - Status: ${orgStatusCode}, Message: ${orgErrorMsg}`);
-          
-          // If deletion fails with "last tagged version" error, this is expected for GHCR
-          // when all tags point to the same version and it's the only version
-          if (orgErrorMsg.includes('last tagged version') || orgErrorMsg.includes('cannot delete')) {
-            this.logger.warning(`Cannot delete tag ${tag}: ${orgErrorMsg}. GitHub Package API does not support deleting individual tags when all tags point to the same version.`);
-            throw new Error(`Cannot delete tag ${tag}: ${orgErrorMsg}`);
-          }
-          throw orgError;
-        }
-      } else {
-        // If deletion fails with "last tagged version" error, this is expected for GHCR
-        if (errorMsg.includes('last tagged version') || errorMsg.includes('cannot delete')) {
-          this.logger.warning(`Cannot delete tag ${tag}: ${errorMsg}. GitHub Package API does not support deleting individual tags when all tags point to the same version.`);
-          throw new Error(`Cannot delete tag ${tag}: ${errorMsg}`);
-        }
-        throw error;
+      if (errorMsg.includes('last tagged version') || errorMsg.includes('cannot delete')) {
+        this.logger.warning(`Cannot delete tag ${tag}: ${errorMsg}. GitHub Package API does not support deleting individual tags when all tags point to the same version.`);
       }
+      throw new Error(`Failed to delete tag ${tag}: ${errorMsg}`);
     }
   }
 
   async getManifest(packageName: string, reference: string): Promise<Manifest> {
-    this.logger.debug(`[GHCR] getManifest: Starting for package ${packageName}, reference ${reference}`);
-    
+    this.logger.debug(`[GHCR] Fetching manifest for package: ${packageName}, reference: ${reference}`);
     if (!this.authenticated) {
-      this.logger.debug(`[GHCR] getManifest: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -480,10 +404,8 @@ export class GHCRProvider extends BaseProvider {
   }
 
   async deleteManifest(packageName: string, digest: string): Promise<void> {
-    this.logger.debug(`[GHCR] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
-    
+    this.logger.debug(`[GHCR] Deleting manifest: ${digest} from package: ${packageName}`);
     if (!this.authenticated) {
-      this.logger.debug(`[GHCR] deleteManifest: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -495,15 +417,12 @@ export class GHCRProvider extends BaseProvider {
   }
 
   async getReferrers(packageName: string, digest: string): Promise<Referrer[]> {
-    this.logger.debug(`[GHCR] getReferrers: Starting for package ${packageName}, digest ${digest}`);
-    
+    this.logger.debug(`[GHCR] Fetching referrers for package: ${packageName}, digest: ${digest}`);
     if (!this.supportsFeature('REFERRERS')) {
-      this.logger.debug(`[GHCR] getReferrers: REFERRERS feature not supported, returning empty array`);
       return [];
     }
 
     if (!this.authenticated) {
-      this.logger.debug(`[GHCR] getReferrers: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 

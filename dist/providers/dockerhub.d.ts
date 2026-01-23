@@ -4,19 +4,19 @@ import { Logger } from '../logger';
 import { HttpClient } from '../utils/api';
 /**
  * Docker Hub provider
- * Uses OCI Registry V2 API
+ * Uses Docker Hub API exclusively (no OCI Registry V2 API)
  */
 export declare class DockerHubProvider extends BaseProvider {
     private readonly username?;
     private readonly password?;
     private readonly token?;
-    protected readonly registryUrl = "https://registry-1.docker.io";
-    private cachedToken?;
-    private tokenExpiry?;
+    private readonly hubApiUrl;
+    private hubToken?;
+    private hubTokenExpiry?;
     constructor(logger: Logger, config: ProviderConfig, httpClient: HttpClient);
     protected getAuthHeaders(): Record<string, string>;
-    protected getDockerHubToken(packageName?: string): Promise<string>;
-    protected getRegistryAuthHeaders(): Record<string, string>;
+    private getRepositoryParts;
+    private getHubToken;
     authenticate(): Promise<void>;
     listPackages(): Promise<Package[]>;
     getPackageManifests(packageName: string): Promise<Manifest[]>;

@@ -25899,26 +25899,17 @@ class CleanupEngine {
                 // But we can still delete individual tags via Package API (e.g., Gitea, GHCR)
                 const hasExcludedTagsForManifest = hasExcludedTags &&
                     await this.hasExcludedTagsForManifest(image.package.name, image.manifest.digest);
-                // Delete tags first (even if excluded tags exist - individual tag deletion is supported by some providers)
-                // However, if excluded tags exist for this manifest, we need to be careful:
-                // - For providers that support individual tag deletion (Gitea Package API, GHCR Package API), we can delete tags
-                // - For providers that only support manifest deletion (OCI Registry API fallback), we should NOT delete tags
-                //   that share a manifest with excluded tags, as it would delete the excluded tags too
                 let allTagsDeleted = true;
                 let shouldSkipTagDeletion = false;
                 if (hasExcludedTagsForManifest) {
-                    // Check if provider supports individual tag deletion
-                    // Gitea and GHCR support it via their Package APIs, but fallback to OCI Registry API doesn't
-                    // For now, we'll try to delete tags and let the provider handle it
-                    // If the provider falls back to OCI Registry API, it will delete the manifest (and all tags)
-                    // We'll prevent manifest deletion later to protect excluded tags
                     this.logger.debug(`Manifest ${image.manifest.digest} has excluded tags - will attempt individual tag deletion but prevent manifest deletion`);
                 }
+                const deletedTagNames = [];
                 for (const tag of image.tags) {
                     try {
                         await this.provider.deleteTag(image.package.name, tag.name);
                         result.deletedTags.push(tag.name);
-                        this.logger.info(`Deleted tag ${tag.name} from ${image.package.name}`);
+                        deletedTagNames.push(tag.name);
                     }
                     catch (error) {
                         const errorMsg = `Failed to delete tag ${tag.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -25926,6 +25917,9 @@ class CleanupEngine {
                         result.errors.push(errorMsg);
                         allTagsDeleted = false;
                     }
+                }
+                if (deletedTagNames.length > 0) {
+                    this.logger.info(`Deleted ${deletedTagNames.length} tag(s) from ${image.package.name}: ${deletedTagNames.join(', ')}`);
                 }
                 // After tag deletion, check again if excluded tags still exist
                 // (in case the provider deleted the manifest via OCI Registry API fallback)
@@ -25968,7 +25962,7 @@ class CleanupEngine {
                             }
                         }
                         result.deletedCount++;
-                        this.logger.info(`Deleted manifest ${image.manifest.digest} from ${image.package.name}`);
+                        this.logger.debug(`Deleted manifest ${image.manifest.digest} from ${image.package.name}`);
                     }
                     catch (error) {
                         const errorMsg = `Failed to delete manifest ${image.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -25981,7 +25975,7 @@ class CleanupEngine {
                     try {
                         await this.provider.deleteManifest(image.package.name, image.manifest.digest);
                         result.deletedCount++;
-                        this.logger.info(`Deleted untagged manifest ${image.manifest.digest} from ${image.package.name}`);
+                        this.logger.debug(`Deleted untagged manifest ${image.manifest.digest} from ${image.package.name}`);
                     }
                     catch (error) {
                         const errorMsg = `Failed to delete untagged manifest ${image.manifest.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -26590,7 +26584,6 @@ async function run() {
             throttle,
         });
         // Create provider
-        logger.info(`Creating ${registryType} provider...`);
         const provider = (0, factory_1.createProvider)(logger, providerConfig, httpClient);
         // Authenticate
         logger.info('Authenticating with registry...');
@@ -26598,7 +26591,6 @@ async function run() {
         // Create cleanup engine
         const engine = new engine_1.CleanupEngine(provider, cleanupConfig, logger);
         // Run cleanup
-        logger.info('Starting cleanup process...');
         const result = await engine.run(packages);
         // Set outputs
         core.setOutput('deleted-count', result.deletedCount);
@@ -26977,7 +26969,7 @@ class DockerCLIProvider {
         return results;
     }
     async authenticate() {
-        this.logger.debug(`[DockerCLI] authenticate: Starting authentication with registry ${this.registryUrl}`);
+        this.logger.debug(`[DockerCLI] Authenticating with registry: ${this.registryUrl} (optional for local operations)`);
         // Authentication is optional for Docker CLI provider since it only works with local images
         // If credentials are provided, we'll login to the registry (useful for pulling images or if Docker has cached credentials)
         const username = this.config.username;
@@ -27015,10 +27007,9 @@ class DockerCLIProvider {
         this.logger.debug(`[DockerCLI] authenticate: Authentication complete (authenticated: ${this.authenticated})`);
     }
     async listPackages() {
-        this.logger.debug(`[DockerCLI] listPackages: Starting package discovery from local Docker images`);
+        this.logger.debug(`[DockerCLI] Listing all packages from local Docker images (registry: ${this.registryUrl})`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Use docker image ls to list local images, filter by registry URL
@@ -27048,10 +27039,9 @@ class DockerCLIProvider {
         return packages;
     }
     async getPackageManifests(packageName) {
-        this.logger.debug(`[DockerCLI] getPackageManifests: Starting for package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Getting all manifests for package: ${packageName} from local Docker images`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const manifests = [];
@@ -27074,10 +27064,9 @@ class DockerCLIProvider {
         return manifests;
     }
     async listTags(packageName) {
-        this.logger.debug(`[DockerCLI] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Listing all tags for package: ${packageName} from local Docker images`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Use docker image ls to list local images for this package
@@ -27115,10 +27104,9 @@ class DockerCLIProvider {
         return tags;
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[DockerCLI] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const imageName = this.getImageName(packageName, tag);
@@ -27145,10 +27133,9 @@ class DockerCLIProvider {
         }
     }
     async getManifest(packageName, reference) {
-        this.logger.debug(`[DockerCLI] getManifest: Starting for package ${packageName}, reference ${reference}`);
+        this.logger.debug(`[DockerCLI] Inspecting local Docker image manifest: ${packageName}:${reference}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] getManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const imageName = this.getImageName(packageName, reference);
@@ -27213,10 +27200,9 @@ class DockerCLIProvider {
         }
     }
     async deleteManifest(packageName, digest) {
-        this.logger.debug(`[DockerCLI] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
+        this.logger.debug(`[DockerCLI] Deleting local Docker images matching manifest digest: ${digest} from package: ${packageName}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
-            this.logger.debug(`[DockerCLI] deleteManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Try to find local images with this digest and delete them
@@ -27254,8 +27240,7 @@ class DockerCLIProvider {
         }
     }
     async getReferrers(packageName, digest) {
-        this.logger.debug(`[DockerCLI] getReferrers: Starting for package ${packageName}, digest ${digest}`);
-        this.logger.debug(`[DockerCLI] getReferrers: Docker CLI doesn't support referrers API, returning empty array`);
+        this.logger.debug(`[DockerCLI] Fetching referrers for package: ${packageName}, digest: ${digest} (Docker CLI doesn't support referrers API, returning empty array)`);
         return [];
     }
     supportsFeature(feature) {
@@ -27293,400 +27278,239 @@ const types_1 = __nccwpck_require__(8522);
 const base_1 = __nccwpck_require__(1789);
 /**
  * Docker Hub provider
- * Uses OCI Registry V2 API
+ * Uses Docker Hub API exclusively (no OCI Registry V2 API)
  */
 class DockerHubProvider extends base_1.BaseProvider {
     username;
     password;
     token;
-    registryUrl = 'https://registry-1.docker.io';
-    cachedToken;
-    tokenExpiry;
+    hubApiUrl = 'https://hub.docker.com/v2';
+    hubToken;
+    hubTokenExpiry;
     constructor(logger, config, httpClient) {
         super(logger, config, httpClient);
         this.username = config.username;
         this.password = config.password;
         this.token = config.token;
-        if (!this.token && !this.username) {
-            throw new Error('Authentication required: provide either token or username/password for Docker Hub');
-        }
-        if (this.username && !this.password) {
-            throw new Error('registry-password is required when registry-username is provided');
+        // Docker Hub provider requires username/password (token can be used as password)
+        if (!this.username || (!this.password && !this.token)) {
+            throw new Error('Docker Hub provider requires registry-username and registry-password (or token to use as password)');
         }
     }
     getAuthHeaders() {
-        if (this.token) {
-            return {
-                Authorization: `Bearer ${this.token}`,
-            };
-        }
+        // Not used for Hub API - we use JWT tokens
         return {};
     }
-    async getDockerHubToken(packageName) {
-        this.logger.debug(`[DockerHub] getDockerHubToken: Starting token acquisition${packageName ? ` for package ${packageName}` : ''}`);
-        // If a static token is provided, use it directly
-        if (this.token) {
-            this.logger.debug(`[DockerHub] getDockerHubToken: Using static token`);
-            return this.token;
+    getRepositoryParts(packageName) {
+        if (packageName.includes('/')) {
+            const [namespace, ...rest] = packageName.split('/');
+            return { namespace, repo: rest.join('/') };
         }
-        // Check if we have a cached token that's still valid
-        if (this.cachedToken && this.tokenExpiry && this.tokenExpiry.getTime() > Date.now()) {
-            this.logger.debug(`[DockerHub] getDockerHubToken: Using cached token (expires: ${this.tokenExpiry.toISOString()})`);
-            return this.cachedToken;
+        if (!this.username) {
+            throw new Error('Docker Hub namespace is required when package name does not include a namespace');
         }
-        if (!this.username || !this.password) {
-            this.logger.debug(`[DockerHub] getDockerHubToken: No credentials available`);
-            throw new types_1.AuthenticationError('Docker Hub credentials required', 'docker-hub');
-        }
-        // Get token from Docker Hub auth service
-        const authUrl = 'https://auth.docker.io/token';
-        const service = 'registry.docker.io';
-        // Use repository-specific scope if package name is provided, otherwise use catalog scope
-        // Format: repository:username/repo:pull,push,delete
-        let scope = 'registry:catalog:*';
-        if (packageName && this.username) {
-            // Extract repo name from packageName (might be username/repo or just repo)
-            const repoName = packageName.includes('/') ? packageName : `${this.username}/${packageName}`;
-            scope = `repository:${repoName}:pull,repository:${repoName}:push,repository:${repoName}:delete`;
-            this.logger.debug(`[DockerHub] getDockerHubToken: Using repository-specific scope: ${scope}`);
-        }
-        else {
-            this.logger.debug(`[DockerHub] getDockerHubToken: Using catalog scope: ${scope}`);
-        }
-        const tokenUrl = `${authUrl}?service=${service}&scope=${scope}`;
-        this.logger.debug(`[DockerHub] getDockerHubToken: Requesting token from ${tokenUrl}`);
-        try {
-            const response = await this.httpClient.get(tokenUrl, {
-                Authorization: `Basic ${Buffer.from(`${this.username}:${this.password}`).toString('base64')}`,
-            });
-            this.logger.debug(`[DockerHub] getDockerHubToken: Response status ${response.status}`);
-            if (!response.data || !response.data.token) {
-                this.logger.debug(`[DockerHub] getDockerHubToken: No token in response`);
-                throw new types_1.AuthenticationError('Failed to get Docker Hub token', 'docker-hub');
-            }
-            // Cache the token with expiration (default to 5 minutes if not provided)
-            this.cachedToken = response.data.token;
-            const expiresIn = response.data.expires_in || 300; // Default to 5 minutes
-            this.tokenExpiry = new Date(Date.now() + (expiresIn - 60) * 1000); // Subtract 60s for safety
-            this.logger.debug(`[DockerHub] getDockerHubToken: Successfully obtained token, expires in ${expiresIn}s (cached until ${this.tokenExpiry.toISOString()})`);
-            return this.cachedToken;
-        }
-        catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[DockerHub] getDockerHubToken: Error - Status: ${statusCode}, Message: ${errorMsg}`);
-            throw error;
-        }
+        return { namespace: this.username, repo: packageName };
     }
-    getRegistryAuthHeaders() {
-        // This will be set after authentication
-        return {
-            Accept: 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json',
-        };
+    async getHubToken() {
+        if (this.hubToken && this.hubTokenExpiry && this.hubTokenExpiry.getTime() > Date.now()) {
+            this.logger.debug(`[DockerHub] getHubToken: Using cached Hub token (expires: ${this.hubTokenExpiry.toISOString()})`);
+            return this.hubToken;
+        }
+        const password = this.password || this.token;
+        if (!this.username || !password) {
+            throw new types_1.AuthenticationError('Docker Hub username/password required for Hub API', 'docker-hub');
+        }
+        const url = `${this.hubApiUrl}/users/login/`;
+        this.logger.debug(`[DockerHub] getHubToken: Requesting Hub token from ${url}`);
+        const response = await this.httpClient.post(url, { username: this.username, password }, { 'Content-Type': 'application/json' });
+        if (!response.data?.token) {
+            throw new types_1.AuthenticationError('Failed to obtain Docker Hub API token', 'docker-hub');
+        }
+        this.hubToken = response.data.token;
+        this.hubTokenExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+        this.logger.debug('[DockerHub] getHubToken: Successfully obtained Hub token');
+        return this.hubToken;
     }
     async authenticate() {
-        this.logger.debug(`[DockerHub] authenticate: Starting authentication with Docker Hub`);
+        this.logger.debug(`[DockerHub] Authenticating with Docker Hub API`);
         try {
-            // Get token (will use cached token if available and valid)
-            const token = await this.getDockerHubToken();
-            if (!token) {
-                this.logger.debug(`[DockerHub] authenticate: Failed to obtain token`);
-                throw new types_1.AuthenticationError('Failed to obtain Docker Hub token', 'docker-hub');
-            }
-            // Test authentication by calling registry API
-            // Use a simple endpoint that requires authentication
-            const url = `${this.registryUrl}/v2/`;
-            this.logger.debug(`[DockerHub] authenticate: Testing authentication with ${url}`);
-            const response = await this.httpClient.get(url, {
-                ...this.getRegistryAuthHeaders(),
-                Authorization: `Bearer ${token}`,
-            });
-            this.logger.debug(`[DockerHub] authenticate: Response status ${response.status}`);
-            // 200 = success, 401 = unauthorized (but token format is valid)
-            // 403 = forbidden (token valid but insufficient permissions)
-            // Any of these means the token was processed correctly
-            if (response.status === 200 || response.status === 401 || response.status === 403) {
-                this.authenticated = true;
-                this.logger.debug(`[DockerHub] authenticate: Successfully authenticated with Docker Hub (status: ${response.status})`);
-            }
-            else {
-                this.logger.debug(`[DockerHub] authenticate: Unexpected response status ${response.status}`);
-                throw new types_1.AuthenticationError(`Unexpected response status: ${response.status}`, 'docker-hub');
-            }
+            await this.getHubToken();
+            this.logger.debug(`[DockerHub] Docker Hub API authentication successful`);
+            this.authenticated = true;
         }
         catch (error) {
-            // Clear cached token on authentication failure
-            this.cachedToken = undefined;
-            this.tokenExpiry = undefined;
-            this.logger.debug(`[DockerHub] authenticate: Cleared cached token due to authentication failure`);
-            if (error instanceof types_1.AuthenticationError) {
-                throw error;
-            }
-            // Provide more detailed error message
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[DockerHub] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
-            if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-                throw new types_1.AuthenticationError('Docker Hub authentication failed: Invalid credentials. Please check your username and password/token.', 'docker-hub');
-            }
-            throw new types_1.AuthenticationError(`Docker Hub authentication failed: ${errorMsg}`, 'docker-hub');
+            this.logger.debug(`[DockerHub] Docker Hub API authentication failed: ${errorMsg}`);
+            throw new types_1.AuthenticationError('Docker Hub authentication failed: Invalid credentials. Please check your username and password/token.', 'docker-hub');
         }
     }
     async listPackages() {
-        this.logger.debug(`[DockerHub] listPackages: Starting package discovery`);
+        this.logger.debug(`[DockerHub] Listing all packages`);
         if (!this.authenticated) {
-            this.logger.debug(`[DockerHub] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
-        // Docker Hub doesn't provide a simple way to list all packages for a user
-        // We'll return an empty array and rely on package name being provided
-        this.logger.debug(`[DockerHub] listPackages: Docker Hub does not support listing all packages`);
-        this.logger.warning('Docker Hub does not support listing all packages. Please specify package names explicitly.');
-        return [];
+        const packages = [];
+        let page = 1;
+        const pageSize = 100;
+        const token = await this.getHubToken();
+        while (true) {
+            const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
+            this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
+            const response = await this.httpClient.get(url, { Authorization: `JWT ${token}` });
+            const results = response.data?.results || [];
+            this.logger.debug(`[DockerHub] Received ${results.length} repositories from page ${page}`);
+            if (results.length === 0) {
+                break;
+            }
+            for (const repo of results) {
+                packages.push({
+                    id: `${repo.namespace}/${repo.name}`,
+                    name: `${repo.namespace}/${repo.name}`,
+                    type: 'container',
+                    owner: repo.namespace,
+                    createdAt: repo.created_at ? new Date(repo.created_at) : undefined,
+                    updatedAt: repo.last_updated ? new Date(repo.last_updated) : undefined,
+                });
+            }
+            if (results.length < pageSize) {
+                break;
+            }
+            page += 1;
+        }
+        this.logger.debug(`[DockerHub] Found ${packages.length} total repositories`);
+        return packages;
     }
     async getPackageManifests(packageName) {
+        this.logger.debug(`[DockerHub] Getting all manifests for package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();
         }
-        const manifests = [];
         const tags = await this.listTags(packageName);
+        const manifests = [];
+        // Group tags by digest to create manifests
+        const digestMap = new Map();
         for (const tag of tags) {
-            try {
-                const manifest = await this.getManifest(packageName, tag.digest);
-                manifests.push(manifest);
+            const digest = tag.digest;
+            if (!digestMap.has(digest)) {
+                digestMap.set(digest, {
+                    digest,
+                    createdAt: tag.createdAt,
+                    updatedAt: tag.updatedAt,
+                });
             }
-            catch (error) {
-                this.logger.warning(`Failed to get manifest for ${packageName}@${tag.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            const manifestData = digestMap.get(digest);
+            // Use the earliest createdAt and latest updatedAt
+            if (tag.createdAt && (!manifestData.createdAt || tag.createdAt < manifestData.createdAt)) {
+                manifestData.createdAt = tag.createdAt;
+            }
+            if (tag.updatedAt && (!manifestData.updatedAt || tag.updatedAt > manifestData.updatedAt)) {
+                manifestData.updatedAt = tag.updatedAt;
             }
         }
+        // Convert to Manifest objects
+        for (const manifestData of digestMap.values()) {
+            manifests.push({
+                digest: manifestData.digest,
+                createdAt: manifestData.createdAt,
+                updatedAt: manifestData.updatedAt,
+                size: 0, // Hub API doesn't provide size
+                mediaType: 'application/vnd.docker.distribution.manifest.v2+json', // Default
+            });
+        }
+        this.logger.debug(`[DockerHub] Constructed ${manifests.length} manifests from Hub API tag data`);
         return manifests;
     }
     async listTags(packageName) {
-        this.logger.debug(`[DockerHub] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[DockerHub] Listing tags for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[DockerHub] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
-        const token = await this.getDockerHubToken(packageName);
-        const url = this.getTagsUrl(packageName);
-        this.logger.debug(`[DockerHub] listTags: Fetching tags from ${url}`);
-        try {
-            const response = await this.httpClient.get(url, {
-                ...this.getRegistryAuthHeaders(),
-                Authorization: `Bearer ${token}`,
-            });
-            this.logger.debug(`[DockerHub] listTags: Response status ${response.status}, received ${response.data?.tags?.length || 0} tag names`);
-            if (!response.data || !response.data.tags) {
-                this.logger.debug(`[DockerHub] listTags: No tags in response, returning empty array`);
-                return [];
+        const { namespace, repo } = this.getRepositoryParts(packageName);
+        const token = await this.getHubToken();
+        let page = 1;
+        const pageSize = 100;
+        const tags = [];
+        while (true) {
+            const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
+            this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);
+            const response = await this.httpClient.get(url, { Authorization: `JWT ${token}` });
+            const results = response.data?.results || [];
+            this.logger.debug(`[DockerHub] Received ${results.length} tags from page ${page}`);
+            if (results.length === 0) {
+                break;
             }
-            const tags = [];
-            for (const tagName of response.data.tags) {
-                this.logger.debug(`[DockerHub] listTags: Processing tag ${tagName}`);
-                try {
-                    const manifest = await this.getManifest(packageName, tagName);
-                    tags.push({
-                        name: tagName,
-                        digest: manifest.digest,
-                        createdAt: manifest.createdAt,
-                        updatedAt: manifest.updatedAt,
-                    });
-                    this.logger.debug(`[DockerHub] listTags: Tag ${tagName} mapped to digest ${manifest.digest}`);
-                }
-                catch (error) {
-                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                    this.logger.debug(`[DockerHub] listTags: Could not get manifest for tag ${tagName}: ${errorMsg}`);
-                }
-            }
-            this.logger.debug(`[DockerHub] listTags: Completed, returning ${tags.length} tags`);
-            return tags;
-        }
-        catch (error) {
-            // If token expired, clear cache and retry once
-            if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-                this.logger.debug('Token may have expired, clearing cache and retrying');
-                this.cachedToken = undefined;
-                this.tokenExpiry = undefined;
-                const newToken = await this.getDockerHubToken(packageName);
-                const response = await this.httpClient.get(url, {
-                    ...this.getRegistryAuthHeaders(),
-                    Authorization: `Bearer ${newToken}`,
+            for (const tag of results) {
+                const digest = tag.images?.find(image => image.digest)?.digest;
+                tags.push({
+                    name: tag.name,
+                    digest: digest || tag.name,
+                    createdAt: tag.last_updated ? new Date(tag.last_updated) : undefined,
+                    updatedAt: tag.last_updated ? new Date(tag.last_updated) : undefined,
                 });
-                if (!response.data || !response.data.tags) {
-                    return [];
-                }
-                // Process tags as above
-                const tags = [];
-                for (const tagName of response.data.tags) {
-                    try {
-                        const manifest = await this.getManifest(packageName, tagName);
-                        tags.push({
-                            name: tagName,
-                            digest: manifest.digest,
-                            createdAt: manifest.createdAt,
-                            updatedAt: manifest.updatedAt,
-                        });
-                    }
-                    catch (err) {
-                        this.logger.debug(`Could not get manifest for tag ${tagName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-                    }
-                }
-                return tags;
             }
-            throw error;
+            if (results.length < pageSize) {
+                break;
+            }
+            page += 1;
         }
+        this.logger.debug(`[DockerHub] Found ${tags.length} total tags via Hub API`);
+        return tags;
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[DockerHub] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[DockerHub] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[DockerHub] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
-        // Get manifest digest for the tag
-        this.logger.debug(`[DockerHub] deleteTag: Fetching manifest for tag ${tag}`);
-        const manifest = await this.getManifest(packageName, tag);
-        this.logger.debug(`[DockerHub] deleteTag: Manifest digest: ${manifest.digest}`);
-        // Delete via registry API
-        this.logger.debug(`[DockerHub] deleteTag: Deleting manifest via deleteManifest`);
-        await this.deleteManifest(packageName, manifest.digest);
-        this.logger.debug(`[DockerHub] deleteTag: Successfully deleted tag ${tag}`);
+        const { namespace, repo } = this.getRepositoryParts(packageName);
+        const token = await this.getHubToken();
+        const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags/${tag}/`;
+        this.logger.debug(`[DockerHub] Deleting tag via Hub API: ${url}`);
+        await this.httpClient.delete(url, { Authorization: `JWT ${token}` });
+        this.logger.info(`Deleted tag ${tag} from package ${packageName}`);
     }
     async getManifest(packageName, reference) {
+        this.logger.debug(`[DockerHub] Getting manifest for package: ${packageName}, reference: ${reference}`);
         if (!this.authenticated) {
             await this.authenticate();
         }
-        const token = await this.getDockerHubToken(packageName);
-        const url = this.getManifestUrl(packageName, reference);
-        const headers = {
-            ...this.getRegistryAuthHeaders(),
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json',
+        // Construct manifest from Hub API tag data
+        // Find the tag that matches the reference (could be tag name or digest)
+        const tags = await this.listTags(packageName);
+        const matchingTag = tags.find(t => t.name === reference || t.digest === reference);
+        if (!matchingTag) {
+            throw new Error(`Tag or digest not found: ${reference}`);
+        }
+        // Construct minimal manifest from tag data
+        return {
+            digest: matchingTag.digest,
+            createdAt: matchingTag.createdAt,
+            updatedAt: matchingTag.updatedAt,
+            size: 0, // Hub API doesn't provide size
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json', // Default
         };
-        try {
-            const response = await this.httpClient.get(url, headers);
-            if (!response.data || typeof response.data !== 'string') {
-                throw new Error('Invalid manifest response');
-            }
-            // Parse JSON string to object
-            const manifestData = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
-            const ociManifest = this.parseOCIManifest(manifestData);
-            const digest = response.headers?.['docker-content-digest'] || reference;
-            return this.convertToManifest(digest, ociManifest);
-        }
-        catch (error) {
-            // If token expired, clear cache and retry once
-            if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-                this.logger.debug('Token may have expired, clearing cache and retrying');
-                this.cachedToken = undefined;
-                this.tokenExpiry = undefined;
-                const newToken = await this.getDockerHubToken(packageName);
-                const response = await this.httpClient.get(url, {
-                    ...headers,
-                    Authorization: `Bearer ${newToken}`,
-                });
-                if (!response.data || typeof response.data !== 'string') {
-                    throw new Error('Invalid manifest response');
-                }
-                // Parse JSON string to object
-                const manifestData = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
-                const ociManifest = this.parseOCIManifest(manifestData);
-                const digest = response.headers?.['docker-content-digest'] || reference;
-                return this.convertToManifest(digest, ociManifest);
-            }
-            throw error;
-        }
     }
     async deleteManifest(packageName, digest) {
-        this.logger.debug(`[DockerHub] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
-        if (!this.authenticated) {
-            this.logger.debug(`[DockerHub] deleteManifest: Not authenticated, authenticating...`);
-            await this.authenticate();
-        }
-        const token = await this.getDockerHubToken(packageName);
-        const url = this.getManifestUrl(packageName, digest);
-        this.logger.debug(`[DockerHub] deleteManifest: Deleting manifest from ${url}`);
-        try {
-            const response = await this.httpClient.delete(url, {
-                ...this.getRegistryAuthHeaders(),
-                Authorization: `Bearer ${token}`,
-            });
-            this.logger.debug(`[DockerHub] deleteManifest: Response status ${response.status}`);
-            this.logger.info(`Deleted manifest ${digest} from package ${packageName}`);
-        }
-        catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[DockerHub] deleteManifest: Error - Status: ${statusCode}, Message: ${errorMsg}`);
-            // If token expired, clear cache and retry once
-            if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-                this.logger.debug('[DockerHub] deleteManifest: Token may have expired, clearing cache and retrying');
-                this.cachedToken = undefined;
-                this.tokenExpiry = undefined;
-                const newToken = await this.getDockerHubToken(packageName);
-                this.logger.debug(`[DockerHub] deleteManifest: Retrying deletion with new token`);
-                const retryResponse = await this.httpClient.delete(url, {
-                    ...this.getRegistryAuthHeaders(),
-                    Authorization: `Bearer ${newToken}`,
-                });
-                this.logger.debug(`[DockerHub] deleteManifest: Retry response status ${retryResponse.status}`);
-                this.logger.info(`Deleted manifest ${digest} from package ${packageName}`);
-            }
-            else {
-                throw error;
-            }
-        }
+        this.logger.debug(`[DockerHub] deleteManifest called for digest: ${digest}`);
+        // Docker Hub API doesn't support direct manifest deletion
+        // We can only delete tags, which will delete the manifest if it's the last tag
+        // This method is not used in practice since we delete tags, not manifests
+        throw new Error('Docker Hub API does not support direct manifest deletion. Delete tags instead.');
     }
     async getReferrers(packageName, digest) {
-        this.logger.debug(`[DockerHub] getReferrers: Starting for package ${packageName}, digest ${digest}`);
-        if (!this.supportsFeature('REFERRERS')) {
-            this.logger.debug(`[DockerHub] getReferrers: REFERRERS feature not supported, returning empty array`);
-            return [];
-        }
-        if (!this.authenticated) {
-            this.logger.debug(`[DockerHub] getReferrers: Not authenticated, authenticating...`);
-            await this.authenticate();
-        }
-        try {
-            const token = await this.getDockerHubToken(packageName);
-            const url = this.getReferrersUrl(packageName, digest);
-            this.logger.debug(`[DockerHub] getReferrers: Fetching referrers from ${url}`);
-            const response = await this.httpClient.get(url, {
-                ...this.getRegistryAuthHeaders(),
-                Authorization: `Bearer ${token}`,
-            });
-            this.logger.debug(`[DockerHub] getReferrers: Response status ${response.status}, referrers: ${response.data?.manifests?.length || 0}`);
-            if (!response.data || !response.data.manifests) {
-                this.logger.debug(`[DockerHub] getReferrers: No referrers in response, returning empty array`);
-                return [];
-            }
-            const referrers = response.data.manifests.map(m => ({
-                digest: m.digest,
-                artifactType: m.artifactType,
-                mediaType: m.mediaType,
-                size: m.size,
-                annotations: m.annotations,
-            }));
-            this.logger.debug(`[DockerHub] getReferrers: Returning ${referrers.length} referrers`);
-            return referrers;
-        }
-        catch (error) {
-            // Referrers API may not be supported, return empty array
-            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[DockerHub] getReferrers: Referrers API not available - Status: ${statusCode}, Message: ${errorMsg}`);
-            return [];
-        }
+        this.logger.debug(`[DockerHub] getReferrers called for package: ${packageName}, digest: ${digest}`);
+        // Docker Hub API doesn't support referrers
+        return [];
     }
     supportsFeature(feature) {
         switch (feature) {
             case 'MULTI_ARCH':
-                return true;
+                return true; // Hub API provides digest info that can indicate multi-arch
             case 'REFERRERS':
-                return false; // Docker Hub may have limited referrers support
+                return false; // Hub API doesn't support referrers
             case 'ATTESTATION':
-                return false; // Docker Hub may have limited attestation support
+                return false; // Hub API doesn't support attestations
             case 'COSIGN':
-                return false; // Docker Hub may have limited cosign support
+                return false; // Hub API doesn't support cosign
             default:
                 return false;
         }
@@ -27695,7 +27519,8 @@ class DockerHubProvider extends base_1.BaseProvider {
         return ['docker.io', 'registry-1.docker.io', 'hub.docker.com'];
     }
     getRegistryApiUrl() {
-        return `${this.registryUrl}/v2`;
+        // Not used - kept for BaseProvider compatibility
+        return '';
     }
 }
 exports.DockerHubProvider = DockerHubProvider;
@@ -27830,28 +27655,25 @@ class GenericOCIProvider extends base_1.BaseProvider {
         };
     }
     async authenticate() {
-        this.logger.debug(`[GenericOCI] authenticate: Starting authentication with OCI registry at ${this.registryUrl}`);
+        this.logger.debug(`[GenericOCI] Authenticating with OCI registry at ${this.registryUrl}`);
         try {
-            // Test authentication by calling registry API version endpoint
             const url = `${this.registryUrl}/v2/`;
-            this.logger.debug(`[GenericOCI] authenticate: Calling ${url}`);
+            this.logger.debug(`[GenericOCI] Testing authentication with ${url}`);
             const response = await this.httpClient.get(url, this.getRegistryAuthHeaders());
-            this.logger.debug(`[GenericOCI] authenticate: Response status ${response.status}`);
             // 200 = success, 401 = unauthorized (but auth format is valid)
             // 403 = forbidden (auth valid but insufficient permissions)
             if (response.status === 200 || response.status === 401 || response.status === 403) {
                 this.authenticated = true;
-                this.logger.debug(`[GenericOCI] authenticate: Successfully authenticated with OCI registry (status: ${response.status})`);
+                this.logger.debug(`[GenericOCI] Authentication successful (status: ${response.status})`);
             }
             else {
-                this.logger.debug(`[GenericOCI] authenticate: Unexpected response status ${response.status}`);
                 throw new types_1.AuthenticationError(`Unexpected response status: ${response.status}`, 'oci');
             }
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GenericOCI] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[GenericOCI] Authentication error - Status: ${statusCode}, Message: ${errorMsg}`);
             if (error instanceof types_1.AuthenticationError) {
                 throw error;
             }
@@ -27862,9 +27684,8 @@ class GenericOCIProvider extends base_1.BaseProvider {
         }
     }
     async listPackages() {
-        this.logger.debug(`[GenericOCI] listPackages: Starting package discovery`);
+        this.logger.debug(`[GenericOCI] Listing all packages (OCI Registry V2 API limitation: package names must be provided explicitly)`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // OCI Registry V2 API does not provide a standard way to list all packages/repositories
@@ -27875,9 +27696,8 @@ class GenericOCIProvider extends base_1.BaseProvider {
         return [];
     }
     async getPackageManifests(packageName) {
-        this.logger.debug(`[GenericOCI] getPackageManifests: Starting for package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Getting all manifests for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const manifests = [];
@@ -27900,9 +27720,8 @@ class GenericOCIProvider extends base_1.BaseProvider {
         return manifests;
     }
     async listTags(packageName) {
-        this.logger.debug(`[GenericOCI] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Listing all tags for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getTagsUrl(packageName);
@@ -27945,27 +27764,20 @@ class GenericOCIProvider extends base_1.BaseProvider {
         }
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[GenericOCI] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Deleting tag: ${tag} from package: ${packageName} (will delete manifest and all tags pointing to it)`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // OCI V2 API limitation: Cannot delete individual tags
         // We can only delete manifests, which deletes ALL tags pointing to that manifest
-        // Get the manifest digest for this tag
-        this.logger.debug(`[GenericOCI] deleteTag: Fetching manifest for tag ${tag}`);
         const manifest = await this.getManifest(packageName, tag);
-        this.logger.debug(`[GenericOCI] deleteTag: Manifest digest: ${manifest.digest}`);
-        this.logger.debug(`[GenericOCI] deleteTag: WARNING - Deleting manifest will delete ALL tags pointing to it`);
-        // Delete the manifest (this will delete all tags pointing to it)
+        this.logger.debug(`[GenericOCI] Manifest digest: ${manifest.digest} - WARNING: Deleting manifest will delete ALL tags pointing to it`);
         await this.deleteManifest(packageName, manifest.digest);
         this.logger.info(`Deleted tag ${tag} (and all other tags pointing to manifest ${manifest.digest}) from package ${packageName}`);
-        this.logger.debug(`[GenericOCI] deleteTag: Successfully deleted tag ${tag}`);
     }
     async getManifest(packageName, reference) {
-        this.logger.debug(`[GenericOCI] getManifest: Starting for package ${packageName}, reference ${reference}`);
+        this.logger.debug(`[GenericOCI] Fetching manifest for package: ${packageName}, reference: ${reference}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] getManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getManifestUrl(packageName, reference);
@@ -27993,33 +27805,30 @@ class GenericOCIProvider extends base_1.BaseProvider {
         }
     }
     async deleteManifest(packageName, digest) {
-        this.logger.debug(`[GenericOCI] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Deleting manifest: ${digest} from package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] deleteManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getManifestUrl(packageName, digest);
-        this.logger.debug(`[GenericOCI] deleteManifest: Deleting manifest from ${url}`);
+        this.logger.debug(`[GenericOCI] Deleting manifest from ${url}`);
         try {
             const response = await this.httpClient.delete(url, this.getRegistryAuthHeaders());
-            this.logger.debug(`[GenericOCI] deleteManifest: Response status ${response.status}`);
+            this.logger.debug(`[GenericOCI] Manifest deletion response: ${response.status}`);
             this.logger.info(`Deleted manifest ${digest} from package ${packageName}`);
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GenericOCI] deleteManifest: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[GenericOCI] Manifest deletion error - Status: ${statusCode}, Message: ${errorMsg}`);
             throw new Error(`Failed to delete manifest ${digest} from ${packageName}: ${errorMsg}`);
         }
     }
     async getReferrers(packageName, digest) {
-        this.logger.debug(`[GenericOCI] getReferrers: Starting for package ${packageName}, digest ${digest}`);
+        this.logger.debug(`[GenericOCI] Fetching referrers for package: ${packageName}, digest: ${digest}`);
         if (!this.supportsFeature('REFERRERS')) {
-            this.logger.debug(`[GenericOCI] getReferrers: REFERRERS feature not supported, returning empty array`);
             return [];
         }
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] getReferrers: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         try {
@@ -28126,6 +27935,7 @@ class GHCRProvider extends base_1.BaseProvider {
     owner;
     repository;
     githubApiUrl = 'https://api.github.com';
+    ownerApiBase;
     constructor(logger, config, httpClient) {
         // Set default registry URL for GHCR if not provided
         const ghcrConfig = {
@@ -28155,27 +27965,35 @@ class GHCRProvider extends base_1.BaseProvider {
             Accept: 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json',
         };
     }
+    async getOwnerApiBase() {
+        if (this.ownerApiBase) {
+            return this.ownerApiBase;
+        }
+        const url = `${this.githubApiUrl}/users/${this.owner}`;
+        this.logger.debug(`[GHCR] getOwnerApiBase: Fetching owner type from ${url}`);
+        const response = await this.httpClient.get(url, this.getAuthHeaders());
+        this.ownerApiBase = response.data?.type === 'Organization' ? 'orgs' : 'users';
+        this.logger.debug(`[GHCR] getOwnerApiBase: Resolved owner type as ${this.ownerApiBase}`);
+        return this.ownerApiBase;
+    }
     async authenticate() {
-        this.logger.debug(`[GHCR] authenticate: Starting authentication with GitHub API at ${this.githubApiUrl}`);
+        this.logger.debug(`[GHCR] Authenticating with GitHub API`);
         try {
-            // Test authentication by calling GitHub API
             const url = `${this.githubApiUrl}/user`;
-            this.logger.debug(`[GHCR] authenticate: Calling ${url}`);
+            this.logger.debug(`[GHCR] Testing authentication with ${url}`);
             const response = await this.httpClient.get(url, this.getAuthHeaders());
-            this.logger.debug(`[GHCR] authenticate: Response status ${response.status}`);
             if (response.status === 200) {
                 this.authenticated = true;
-                this.logger.debug('[GHCR] authenticate: Successfully authenticated with GitHub');
+                this.logger.debug(`[GHCR] Authentication successful (status: ${response.status})`);
             }
             else {
-                this.logger.debug(`[GHCR] authenticate: Authentication failed with status ${response.status}`);
                 throw new types_1.AuthenticationError('Failed to authenticate with GitHub', 'ghcr');
             }
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GHCR] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[GHCR] Authentication error - Status: ${statusCode}, Message: ${errorMsg}`);
             if (error instanceof types_1.AuthenticationError) {
                 throw error;
             }
@@ -28183,22 +28001,21 @@ class GHCRProvider extends base_1.BaseProvider {
         }
     }
     async listPackages() {
-        this.logger.debug(`[GHCR] listPackages: Starting package discovery for owner ${this.owner}`);
+        this.logger.debug(`[GHCR] Listing all packages for owner: ${this.owner}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GHCR] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const packages = [];
         let page = 1;
         const perPage = 100;
+        const ownerApiBase = await this.getOwnerApiBase();
         while (true) {
-            const url = `${this.githubApiUrl}/users/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
-            this.logger.debug(`[GHCR] listPackages: Fetching page ${page} from ${url}`);
+            const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
+            this.logger.debug(`[GHCR] Fetching packages page ${page}`);
             try {
                 const response = await this.httpClient.get(url, this.getAuthHeaders());
-                this.logger.debug(`[GHCR] listPackages: Response status ${response.status}, received ${response.data?.length || 0} packages`);
+                this.logger.debug(`[GHCR] Response: ${response.status}, ${response.data?.length || 0} packages`);
                 if (!response.data || response.data.length === 0) {
-                    this.logger.debug(`[GHCR] listPackages: No more packages, stopping pagination`);
                     break;
                 }
                 for (const pkg of response.data) {
@@ -28210,10 +28027,8 @@ class GHCRProvider extends base_1.BaseProvider {
                         createdAt: new Date(pkg.created_at),
                         updatedAt: new Date(pkg.updated_at),
                     });
-                    this.logger.debug(`[GHCR] listPackages: Found package ${pkg.name} (id: ${pkg.id})`);
                 }
                 if (response.data.length < perPage) {
-                    this.logger.debug(`[GHCR] listPackages: Last page reached (${response.data.length} < ${perPage})`);
                     break;
                 }
                 page++;
@@ -28221,21 +28036,19 @@ class GHCRProvider extends base_1.BaseProvider {
             catch (error) {
                 const errorMsg = error instanceof Error ? error.message : 'Unknown error';
                 const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-                this.logger.debug(`[GHCR] listPackages: Error on page ${page} - Status: ${statusCode}, Message: ${errorMsg}`);
+                this.logger.debug(`[GHCR] Error on page ${page} - Status: ${statusCode}, Message: ${errorMsg}`);
                 if (error instanceof types_1.NotFoundError) {
-                    this.logger.debug(`[GHCR] listPackages: Not found error, stopping pagination`);
                     break;
                 }
                 throw error;
             }
         }
-        this.logger.debug(`[GHCR] listPackages: Completed, found ${packages.length} total packages`);
+        this.logger.debug(`[GHCR] Found ${packages.length} total packages`);
         return packages;
     }
     async getPackageManifests(packageName) {
-        this.logger.debug(`[GHCR] getPackageManifests: Starting for package ${packageName}`);
+        this.logger.debug(`[GHCR] Getting all manifests for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GHCR] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // For GHCR, we work with package versions directly via GitHub Package API
@@ -28286,37 +28099,19 @@ class GHCRProvider extends base_1.BaseProvider {
         // Extract just the package name (without owner prefix) for GitHub API
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[GHCR] getPackageVersions: Extracted package name: ${packageNameOnly} (from ${packageName})`);
-        // Try user endpoint first
-        let url = `${this.githubApiUrl}/users/${this.owner}/packages/container/${packageNameOnly}/versions`;
-        this.logger.debug(`[GHCR] getPackageVersions: Attempting user endpoint: ${url}`);
+        const ownerApiBase = await this.getOwnerApiBase();
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+        this.logger.debug(`[GHCR] getPackageVersions: Fetching versions from ${url}`);
         let response;
         try {
             response = await this.httpClient.get(url, this.getAuthHeaders());
-            this.logger.debug(`[GHCR] getPackageVersions: User endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
+            this.logger.debug(`[GHCR] getPackageVersions: Response status ${response.status}, versions: ${response.data?.length || 0}`);
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GHCR] getPackageVersions: User endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
-            // If user endpoint fails with 404, try org endpoint
-            if (error instanceof Error && (error.message.includes('404') || error.message.includes('Not Found'))) {
-                url = `${this.githubApiUrl}/orgs/${this.owner}/packages/container/${packageNameOnly}/versions`;
-                this.logger.debug(`[GHCR] getPackageVersions: Trying org endpoint: ${url}`);
-                try {
-                    response = await this.httpClient.get(url, this.getAuthHeaders());
-                    this.logger.debug(`[GHCR] getPackageVersions: Org endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
-                }
-                catch (orgError) {
-                    const orgErrorMsg = orgError instanceof Error ? orgError.message : 'Unknown error';
-                    const orgStatusCode = orgError instanceof Error && 'statusCode' in orgError ? orgError.statusCode : 'unknown';
-                    this.logger.debug(`[GHCR] getPackageVersions: Org endpoint also failed - Status: ${orgStatusCode}, Message: ${orgErrorMsg}`);
-                    // If both fail, rethrow the original error
-                    throw error;
-                }
-            }
-            else {
-                throw error;
-            }
+            this.logger.debug(`[GHCR] getPackageVersions: Request failed - Status: ${statusCode}, Message: ${errorMsg}`);
+            return [];
         }
         if (!response.data) {
             this.logger.debug(`[GHCR] getPackageVersions: No data in response, returning empty array`);
@@ -28332,44 +28127,27 @@ class GHCRProvider extends base_1.BaseProvider {
         return versions;
     }
     async listTags(packageName) {
-        this.logger.debug(`[GHCR] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[GHCR] Listing all tags for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GHCR] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // Use GitHub Package API to get tags - no need for OCI Registry V2 API
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[GHCR] listTags: Extracted package name: ${packageNameOnly}`);
-        let url = `${this.githubApiUrl}/users/${this.owner}/packages/container/${packageNameOnly}/versions`;
-        this.logger.debug(`[GHCR] listTags: Attempting user endpoint: ${url}`);
+        const ownerApiBase = await this.getOwnerApiBase();
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+        this.logger.debug(`[GHCR] listTags: Fetching versions from ${url}`);
         let response;
         try {
             response = await this.httpClient.get(url, this.getAuthHeaders());
-            this.logger.debug(`[GHCR] listTags: User endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
+            this.logger.debug(`[GHCR] listTags: Response status ${response.status}, versions: ${response.data?.length || 0}`);
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GHCR] listTags: User endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
-            // If user endpoint fails, try org endpoint
-            if (error instanceof Error && (error.message.includes('404') || error.message.includes('Not Found'))) {
-                url = `${this.githubApiUrl}/orgs/${this.owner}/packages/container/${packageNameOnly}/versions`;
-                this.logger.debug(`[GHCR] listTags: Trying org endpoint: ${url}`);
-                try {
-                    response = await this.httpClient.get(url, this.getAuthHeaders());
-                    this.logger.debug(`[GHCR] listTags: Org endpoint response status ${response.status}, versions: ${response.data?.length || 0}`);
-                }
-                catch (orgError) {
-                    const orgErrorMsg = orgError instanceof Error ? orgError.message : 'Unknown error';
-                    this.logger.debug(`[GHCR] listTags: Org endpoint also failed - Status: ${statusCode}, Message: ${orgErrorMsg}`);
-                    this.logger.warning(`Failed to get package versions: ${errorMsg}`);
-                    return [];
-                }
-            }
-            else {
-                this.logger.warning(`Failed to get package versions: ${errorMsg}`);
-                return [];
-            }
+            this.logger.debug(`[GHCR] listTags: Request failed - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.warning(`Failed to get package versions: ${errorMsg}`);
+            return [];
         }
         if (!response.data) {
             this.logger.debug(`[GHCR] listTags: No data in response, returning empty array`);
@@ -28406,81 +28184,46 @@ class GHCRProvider extends base_1.BaseProvider {
         return Array.from(tagMap.values()).map(item => item.tag);
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[GHCR] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[GHCR] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GHCR] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
-        // Find the package version by tag name using GitHub Package API
-        this.logger.debug(`[GHCR] deleteTag: Finding package version for tag ${tag}`);
         const packageVersions = await this.getPackageVersions(packageName);
-        this.logger.debug(`[GHCR] deleteTag: Found ${packageVersions.length} package versions`);
+        this.logger.debug(`[GHCR] Found ${packageVersions.length} package versions`);
         const version = packageVersions.find(v => v.tags.includes(tag));
         if (!version) {
-            this.logger.debug(`[GHCR] deleteTag: Version not found for tag ${tag}`);
             throw new Error(`Version not found for tag ${tag} in package ${packageName}`);
         }
-        this.logger.debug(`[GHCR] deleteTag: Found version ${version.id} with ${version.tags.length} tags: ${version.tags.join(', ')}`);
+        this.logger.debug(`[GHCR] Version ${version.id} has ${version.tags.length} tags: ${version.tags.join(', ')}`);
         // GHCR limitation: When multiple tags point to the same version, deleting a tag deletes the entire version
-        // GitHub doesn't allow deleting the last tagged version of a package
-        // If this version has multiple tags and it's the only version, we can't delete individual tags
-        // Check if there are other versions with tags
         const otherVersionsWithTags = packageVersions.filter(v => v.id !== version.id && v.tags.length > 0);
-        this.logger.debug(`[GHCR] deleteTag: Other versions with tags: ${otherVersionsWithTags.length}`);
         if (version.tags.length > 1 && otherVersionsWithTags.length === 0) {
-            // This is the only version and it has multiple tags - can't delete individual tags
             const errorMsg = `Cannot delete tag ${tag}: This is the only version and it has multiple tags. GitHub Package API does not support deleting individual tags when all tags point to the same version.`;
-            this.logger.debug(`[GHCR] deleteTag: ${errorMsg}`);
+            this.logger.debug(`[GHCR] ${errorMsg}`);
             throw new Error(errorMsg);
         }
         const packageNameOnly = this.extractPackageName(packageName);
-        let url = `${this.githubApiUrl}/users/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
-        this.logger.debug(`[GHCR] deleteTag: Attempting deletion via user endpoint: ${url}`);
+        const ownerApiBase = await this.getOwnerApiBase();
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
+        this.logger.debug(`[GHCR] Deleting version ${version.id} via ${ownerApiBase} endpoint`);
         try {
             const response = await this.httpClient.delete(url, this.getAuthHeaders());
-            this.logger.debug(`[GHCR] deleteTag: User endpoint deletion response status ${response.status}`);
+            this.logger.debug(`[GHCR] Deletion response: ${response.status}`);
             this.logger.info(`Deleted tag ${tag} (version ${version.id}) from package ${packageName}`);
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GHCR] deleteTag: User endpoint deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
-            // If user endpoint fails, try org endpoint
-            if (error instanceof Error && (error.message.includes('404') || error.message.includes('Not Found'))) {
-                url = `${this.githubApiUrl}/orgs/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
-                this.logger.debug(`[GHCR] deleteTag: Trying org endpoint: ${url}`);
-                try {
-                    const orgResponse = await this.httpClient.delete(url, this.getAuthHeaders());
-                    this.logger.debug(`[GHCR] deleteTag: Org endpoint deletion response status ${orgResponse.status}`);
-                    this.logger.info(`Deleted tag ${tag} (version ${version.id}) from package ${packageName}`);
-                }
-                catch (orgError) {
-                    const orgErrorMsg = orgError instanceof Error ? orgError.message : 'Unknown error';
-                    const orgStatusCode = orgError instanceof Error && 'statusCode' in orgError ? orgError.statusCode : 'unknown';
-                    this.logger.debug(`[GHCR] deleteTag: Org endpoint deletion failed - Status: ${orgStatusCode}, Message: ${orgErrorMsg}`);
-                    // If deletion fails with "last tagged version" error, this is expected for GHCR
-                    // when all tags point to the same version and it's the only version
-                    if (orgErrorMsg.includes('last tagged version') || orgErrorMsg.includes('cannot delete')) {
-                        this.logger.warning(`Cannot delete tag ${tag}: ${orgErrorMsg}. GitHub Package API does not support deleting individual tags when all tags point to the same version.`);
-                        throw new Error(`Cannot delete tag ${tag}: ${orgErrorMsg}`);
-                    }
-                    throw orgError;
-                }
+            this.logger.debug(`[GHCR] Deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
+            if (errorMsg.includes('last tagged version') || errorMsg.includes('cannot delete')) {
+                this.logger.warning(`Cannot delete tag ${tag}: ${errorMsg}. GitHub Package API does not support deleting individual tags when all tags point to the same version.`);
             }
-            else {
-                // If deletion fails with "last tagged version" error, this is expected for GHCR
-                if (errorMsg.includes('last tagged version') || errorMsg.includes('cannot delete')) {
-                    this.logger.warning(`Cannot delete tag ${tag}: ${errorMsg}. GitHub Package API does not support deleting individual tags when all tags point to the same version.`);
-                    throw new Error(`Cannot delete tag ${tag}: ${errorMsg}`);
-                }
-                throw error;
-            }
+            throw new Error(`Failed to delete tag ${tag}: ${errorMsg}`);
         }
     }
     async getManifest(packageName, reference) {
-        this.logger.debug(`[GHCR] getManifest: Starting for package ${packageName}, reference ${reference}`);
+        this.logger.debug(`[GHCR] Fetching manifest for package: ${packageName}, reference: ${reference}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GHCR] getManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // For GHCR, we work with GitHub Package API - reference is a tag name
@@ -28507,9 +28250,8 @@ class GHCRProvider extends base_1.BaseProvider {
         }
     }
     async deleteManifest(packageName, digest) {
-        this.logger.debug(`[GHCR] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
+        this.logger.debug(`[GHCR] Deleting manifest: ${digest} from package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GHCR] deleteManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // For GHCR, digest is actually a tag name when using GitHub Package API
@@ -28519,13 +28261,11 @@ class GHCRProvider extends base_1.BaseProvider {
         this.logger.debug(`[GHCR] deleteManifest: Successfully deleted via deleteTag`);
     }
     async getReferrers(packageName, digest) {
-        this.logger.debug(`[GHCR] getReferrers: Starting for package ${packageName}, digest ${digest}`);
+        this.logger.debug(`[GHCR] Fetching referrers for package: ${packageName}, digest: ${digest}`);
         if (!this.supportsFeature('REFERRERS')) {
-            this.logger.debug(`[GHCR] getReferrers: REFERRERS feature not supported, returning empty array`);
             return [];
         }
         if (!this.authenticated) {
-            this.logger.debug(`[GHCR] getReferrers: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         try {
@@ -28631,26 +28371,23 @@ class GiteaProvider extends base_1.BaseProvider {
         };
     }
     async authenticate() {
-        this.logger.debug(`[Gitea] authenticate: Starting authentication with Gitea API at ${this.giteaApiUrl}`);
+        this.logger.debug(`[Gitea] Authenticating with Gitea API at ${this.giteaApiUrl}`);
         try {
-            // Test authentication by calling Gitea API
             const url = `${this.giteaApiUrl}/user`;
-            this.logger.debug(`[Gitea] authenticate: Calling ${url}`);
+            this.logger.debug(`[Gitea] Testing authentication with ${url}`);
             const response = await this.httpClient.get(url, this.getAuthHeaders());
-            this.logger.debug(`[Gitea] authenticate: Response status ${response.status}`);
             if (response.status === 200) {
                 this.authenticated = true;
-                this.logger.debug('[Gitea] authenticate: Successfully authenticated with Gitea');
+                this.logger.debug(`[Gitea] Authentication successful (status: ${response.status})`);
             }
             else {
-                this.logger.debug(`[Gitea] authenticate: Authentication failed with status ${response.status}`);
                 throw new types_1.AuthenticationError('Failed to authenticate with Gitea', 'gitea');
             }
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[Gitea] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[Gitea] Authentication error - Status: ${statusCode}, Message: ${errorMsg}`);
             if (error instanceof types_1.AuthenticationError) {
                 throw error;
             }
@@ -28658,9 +28395,8 @@ class GiteaProvider extends base_1.BaseProvider {
         }
     }
     async listPackages() {
-        this.logger.debug(`[Gitea] listPackages: Starting package discovery for owner ${this.owner}`);
+        this.logger.debug(`[Gitea] Listing all packages for owner: ${this.owner}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const packages = [];
@@ -28700,9 +28436,8 @@ class GiteaProvider extends base_1.BaseProvider {
         return packages;
     }
     async getPackageManifests(packageName) {
-        this.logger.debug(`[Gitea] getPackageManifests: Starting for package ${packageName}`);
+        this.logger.debug(`[Gitea] Getting all manifests for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const manifests = [];
@@ -28710,15 +28445,16 @@ class GiteaProvider extends base_1.BaseProvider {
             const packageVersions = await this.getPackageVersions(packageName);
             this.logger.debug(`[Gitea] getPackageManifests: Found ${packageVersions.length} package versions`);
             for (const version of packageVersions) {
-                this.logger.debug(`[Gitea] getPackageManifests: Fetching manifest for version ${version.id} (digest: ${version.digest})`);
+                const reference = version.digest || version.version;
+                this.logger.debug(`[Gitea] getPackageManifests: Fetching manifest for version ${version.version} (reference: ${reference})`);
                 try {
-                    const manifest = await this.getManifest(packageName, version.digest);
+                    const manifest = await this.getManifest(packageName, reference);
                     manifests.push(manifest);
                     this.logger.debug(`[Gitea] getPackageManifests: Successfully fetched manifest ${manifest.digest}`);
                 }
                 catch (error) {
                     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                    this.logger.debug(`[Gitea] getPackageManifests: Failed to get manifest for ${packageName}@${version.digest}: ${errorMsg}`);
+                    this.logger.debug(`[Gitea] getPackageManifests: Failed to get manifest for ${packageName}@${reference}: ${errorMsg}`);
                 }
             }
         }
@@ -28747,119 +28483,55 @@ class GiteaProvider extends base_1.BaseProvider {
         // Extract just the package name (without owner prefix)
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[Gitea] getPackageVersions: Extracted package name: ${packageNameOnly} (from ${packageName})`);
-        // Try the package endpoint - Gitea API might return a single package object with versions
-        const url = `${this.giteaApiUrl}/packages/${this.owner}/${packageNameOnly}?type=container`;
-        this.logger.debug(`[Gitea] getPackageVersions: Attempting single package endpoint: ${url}`);
+        const tags = await this.listTags(packageName);
+        const tagMap = new Map(tags.map(tag => [tag.name, tag]));
+        this.logger.debug(`[Gitea] getPackageVersions: Loaded ${tags.length} tags for digest mapping`);
+        const versions = [];
+        let page = 1;
+        const limit = 50;
         try {
-            // First try as a single package object with versions array
-            const response = await this.httpClient.get(url, this.getAuthHeaders());
-            this.logger.debug(`[Gitea] getPackageVersions: Single package endpoint response status ${response.status}`);
-            if (response.data?.versions) {
-                this.logger.debug(`[Gitea] getPackageVersions: Found ${response.data.versions.length} versions in single package response`);
-                // Extract digests from package versions
-                const versions = [];
-                for (const version of response.data.versions) {
-                    this.logger.debug(`[Gitea] getPackageVersions: Processing version ${version.id} (tag: ${version.version})`);
-                    // Try to get digest from tags
-                    try {
-                        const tags = await this.listTags(packageName); // listTags handles full package name
-                        const tag = tags.find(t => t.name === version.version);
-                        if (tag) {
-                            versions.push({
-                                id: version.id,
-                                digest: tag.digest,
-                                created_at: version.created_at,
-                            });
-                            this.logger.debug(`[Gitea] getPackageVersions: Mapped version ${version.id} to digest ${tag.digest}`);
-                        }
-                        else {
-                            this.logger.debug(`[Gitea] getPackageVersions: Could not find tag ${version.version} in tags list`);
-                        }
-                    }
-                    catch (error) {
-                        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                        this.logger.debug(`[Gitea] getPackageVersions: Could not get digest for version ${version.id}: ${errorMsg}`);
-                    }
+            while (true) {
+                const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
+                this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);
+                const response = await this.httpClient.get(url, this.getAuthHeaders());
+                this.logger.debug(`[Gitea] getPackageVersions: Response status ${response.status}, versions: ${response.data?.length || 0}`);
+                if (!response.data || response.data.length === 0) {
+                    this.logger.debug(`[Gitea] getPackageVersions: No more versions, stopping pagination`);
+                    break;
                 }
-                this.logger.debug(`[Gitea] getPackageVersions: Returning ${versions.length} versions with digests`);
-                return versions;
-            }
-            else {
-                this.logger.debug(`[Gitea] getPackageVersions: Single package response has no versions array`);
-            }
-        }
-        catch (error) {
-            // If single package endpoint fails, try listing all packages and finding the one we need
-            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[Gitea] getPackageVersions: Single package endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
-            try {
-                this.logger.debug(`[Gitea] getPackageVersions: Falling back to listPackages approach`);
-                // List all packages and find the one matching our package name
-                const allPackages = await this.listPackages();
-                this.logger.debug(`[Gitea] getPackageVersions: Listed ${allPackages.length} packages, searching for ${packageNameOnly}`);
-                const matchingPackage = allPackages.find(pkg => {
-                    const pkgNameOnly = this.extractPackageName(pkg.name);
-                    return pkgNameOnly === packageNameOnly || pkg.name === packageName || pkg.name === packageNameOnly;
-                });
-                if (matchingPackage) {
-                    this.logger.debug(`[Gitea] getPackageVersions: Found matching package: ${matchingPackage.name} (id: ${matchingPackage.id})`);
-                    // Try to get versions using the package ID or name from listPackages
-                    const packageIdUrl = `${this.giteaApiUrl}/packages/${this.owner}/${matchingPackage.name}?type=container`;
-                    this.logger.debug(`[Gitea] getPackageVersions: Attempting package endpoint with matched name: ${packageIdUrl}`);
-                    const packageResponse = await this.httpClient.get(packageIdUrl, this.getAuthHeaders());
-                    this.logger.debug(`[Gitea] getPackageVersions: Package response status ${packageResponse.status}, versions: ${packageResponse.data?.versions?.length || 0}`);
-                    if (packageResponse.data?.versions) {
-                        this.logger.debug(`[Gitea] getPackageVersions: Processing ${packageResponse.data.versions.length} versions from matched package`);
-                        // Extract digests from package versions
-                        const versions = [];
-                        for (const version of packageResponse.data.versions) {
-                            this.logger.debug(`[Gitea] getPackageVersions: Processing version ${version.id} (tag: ${version.version})`);
-                            // Try to get digest from tags
-                            try {
-                                const tags = await this.listTags(packageName);
-                                const tag = tags.find(t => t.name === version.version);
-                                if (tag) {
-                                    versions.push({
-                                        id: version.id,
-                                        digest: tag.digest,
-                                        created_at: version.created_at,
-                                    });
-                                    this.logger.debug(`[Gitea] getPackageVersions: Mapped version ${version.id} to digest ${tag.digest}`);
-                                }
-                                else {
-                                    this.logger.debug(`[Gitea] getPackageVersions: Could not find tag ${version.version} in tags list`);
-                                }
-                            }
-                            catch (error) {
-                                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                                this.logger.debug(`[Gitea] getPackageVersions: Could not get digest for version ${version.id}: ${errorMsg}`);
-                            }
-                        }
-                        this.logger.debug(`[Gitea] getPackageVersions: Returning ${versions.length} versions with digests (via listPackages fallback)`);
-                        return versions;
+                for (const pkgVersion of response.data) {
+                    const tag = tagMap.get(pkgVersion.version);
+                    versions.push({
+                        version: pkgVersion.version,
+                        digest: tag?.digest,
+                        created_at: pkgVersion.created_at,
+                    });
+                    if (tag) {
+                        this.logger.debug(`[Gitea] getPackageVersions: Mapped version ${pkgVersion.version} to digest ${tag.digest}`);
                     }
                     else {
-                        this.logger.debug(`[Gitea] getPackageVersions: Matched package response has no versions array`);
+                        this.logger.debug(`[Gitea] getPackageVersions: No digest found for version ${pkgVersion.version}`);
                     }
                 }
-                else {
-                    this.logger.debug(`[Gitea] getPackageVersions: No matching package found in ${allPackages.length} packages`);
+                if (response.data.length < limit) {
+                    break;
                 }
+                page++;
             }
-            catch (listError) {
-                const errorMsg = listError instanceof Error ? listError.message : 'Unknown error';
-                const statusCode = listError instanceof Error && 'statusCode' in listError ? listError.statusCode : 'unknown';
-                this.logger.debug(`[Gitea] getPackageVersions: listPackages fallback failed - Status: ${statusCode}, Message: ${errorMsg}`);
-            }
+            this.logger.debug(`[Gitea] getPackageVersions: Returning ${versions.length} versions with digests`);
+            return versions;
+        }
+        catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
+            this.logger.debug(`[Gitea] getPackageVersions: listPackageVersions endpoint failed - Status: ${statusCode}, Message: ${errorMsg}`);
         }
         this.logger.debug(`[Gitea] getPackageVersions: No versions found, returning empty array`);
         return [];
     }
     async listTags(packageName) {
-        this.logger.debug(`[Gitea] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[Gitea] Listing all tags for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getTagsUrl(packageName);
@@ -28901,95 +28573,49 @@ class GiteaProvider extends base_1.BaseProvider {
         }
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[Gitea] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[Gitea] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[Gitea] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         try {
-            // Get manifest digest for the tag
-            this.logger.debug(`[Gitea] deleteTag: Fetching manifest for tag ${tag}`);
+            const packageNameOnly = this.extractPackageName(packageName);
+            const deleteUrl = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}/${tag}`;
+            this.logger.debug(`[Gitea] Deleting version ${tag} via Package API: ${deleteUrl}`);
+            await this.httpClient.delete(deleteUrl, this.getAuthHeaders());
+            this.logger.info(`Deleted tag ${tag} from package ${packageName}`);
+            return;
+        }
+        catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
+            this.logger.debug(`[Gitea] Package API deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[Gitea] Falling back to OCI Registry API (with safety check)`);
+        }
+        try {
             const manifest = await this.getManifest(packageName, tag);
-            this.logger.debug(`[Gitea] deleteTag: Manifest digest: ${manifest.digest}`);
-            // Try to delete via Gitea Package API first
-            // In Gitea, each tag is a separate package version, so we need to find the version by tag name
-            try {
-                this.logger.debug(`[Gitea] deleteTag: Attempting deletion via Gitea Package API`);
-                const packageVersions = await this.getPackageVersions(packageName);
-                this.logger.debug(`[Gitea] deleteTag: Found ${packageVersions.length} package versions`);
-                const version = packageVersions.find(v => {
-                    // Try to match by tag name - we need to get the tag for this version
-                    // Since we stored digest in getPackageVersions, we can match by digest
-                    return v.digest === manifest.digest;
-                });
-                if (version) {
-                    this.logger.debug(`[Gitea] deleteTag: Found version ${version.id} matching manifest digest ${manifest.digest}`);
-                    // Find the version by tag name by checking all versions
-                    const packageNameOnly = this.extractPackageName(packageName);
-                    const packageUrl = `${this.giteaApiUrl}/packages/${this.owner}/${packageNameOnly}?type=container`;
-                    this.logger.debug(`[Gitea] deleteTag: Fetching package details from ${packageUrl}`);
-                    const packageResponse = await this.httpClient.get(packageUrl, this.getAuthHeaders());
-                    this.logger.debug(`[Gitea] deleteTag: Package response status ${packageResponse.status}, versions: ${packageResponse.data?.versions?.length || 0}`);
-                    if (packageResponse.data?.versions) {
-                        // Find version by tag name (version.version contains the tag name)
-                        const versionByTag = packageResponse.data.versions.find(v => v.version === tag);
-                        if (versionByTag) {
-                            const url = `${this.giteaApiUrl}/packages/${this.owner}/${packageNameOnly}/versions/${versionByTag.id}`;
-                            this.logger.debug(`[Gitea] deleteTag: Deleting version ${versionByTag.id} via Package API: ${url}`);
-                            await this.httpClient.delete(url, this.getAuthHeaders());
-                            this.logger.info(`Deleted tag ${tag} (version ${versionByTag.id}) from package ${packageName}`);
-                            this.logger.debug(`[Gitea] deleteTag: Successfully deleted via Package API`);
-                            return;
-                        }
-                        else {
-                            this.logger.debug(`[Gitea] deleteTag: Version with tag name ${tag} not found in package versions`);
-                        }
-                    }
-                    else {
-                        this.logger.debug(`[Gitea] deleteTag: Package response has no versions array`);
-                    }
-                }
-                else {
-                    this.logger.debug(`[Gitea] deleteTag: No version found matching manifest digest ${manifest.digest}`);
-                }
-            }
-            catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-                this.logger.debug(`[Gitea] deleteTag: Package API deletion failed - Status: ${statusCode}, Message: ${errorMsg}`);
-                this.logger.debug(`[Gitea] deleteTag: Falling back to OCI Registry API (with safety check)`);
-            }
+            this.logger.debug(`[Gitea] Manifest digest: ${manifest.digest}`);
             // Fallback: delete via OCI Registry V2 API
-            // WARNING: This will delete the entire manifest and ALL tags pointing to it
-            // Only use this fallback if we're sure there are no other tags we want to keep
             // Check if there are other tags pointing to this manifest
             try {
-                this.logger.debug(`[Gitea] deleteTag: Checking for other tags pointing to manifest ${manifest.digest}`);
                 const allTags = await this.listTags(packageName);
                 const tagsForThisManifest = allTags.filter(t => t.digest === manifest.digest);
-                this.logger.debug(`[Gitea] deleteTag: Found ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest}: ${tagsForThisManifest.map(t => t.name).join(', ')}`);
+                this.logger.debug(`[Gitea] Found ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest}: ${tagsForThisManifest.map(t => t.name).join(', ')}`);
                 if (tagsForThisManifest.length > 1) {
-                    // There are other tags pointing to this manifest
-                    // Deleting via OCI Registry API would delete all tags, which we don't want
                     const errorMsg = `Cannot delete tag ${tag} via OCI Registry API: Manifest ${manifest.digest} has ${tagsForThisManifest.length} tags. ` +
                         `Deleting the manifest would delete all tags. Gitea Package API deletion failed, and OCI Registry API fallback is not safe.`;
-                    this.logger.debug(`[Gitea] deleteTag: ${errorMsg}`);
+                    this.logger.debug(`[Gitea] ${errorMsg}`);
                     throw new Error(errorMsg);
                 }
-                // Only one tag points to this manifest, safe to delete via OCI Registry API
-                this.logger.debug(`[Gitea] deleteTag: Only one tag points to manifest, safe to delete via OCI Registry API`);
+                this.logger.debug(`[Gitea] Only one tag points to manifest, safe to delete via OCI Registry API`);
                 await this.deleteManifest(packageName, manifest.digest);
                 this.logger.info(`Deleted tag ${tag} via OCI Registry API from package ${packageName}`);
-                this.logger.debug(`[Gitea] deleteTag: Successfully deleted via OCI Registry API`);
             }
             catch (deleteError) {
-                // If manifest is already deleted (Resource not found), the tag is effectively deleted
                 const errorMsg = deleteError instanceof Error ? deleteError.message : 'Unknown error';
                 const statusCode = deleteError instanceof Error && 'statusCode' in deleteError ? deleteError.statusCode : 'unknown';
-                this.logger.debug(`[Gitea] deleteTag: OCI Registry API deletion error - Status: ${statusCode}, Message: ${errorMsg}`);
+                this.logger.debug(`[Gitea] OCI Registry API deletion error - Status: ${statusCode}, Message: ${errorMsg}`);
                 if (errorMsg.includes('Resource not found') || errorMsg.includes('404') || errorMsg.includes('Not Found')) {
                     this.logger.info(`Tag ${tag} already deleted (manifest not found)`);
-                    this.logger.debug(`[Gitea] deleteTag: Tag already deleted, returning successfully`);
                     return;
                 }
                 throw deleteError;
@@ -28998,18 +28624,17 @@ class GiteaProvider extends base_1.BaseProvider {
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[Gitea] deleteTag: Overall error - Status: ${statusCode}, Message: ${errorMsg}`);
-            // If the error is "Resource not found", the tag/manifest is already deleted
+            this.logger.debug(`[Gitea] Overall error - Status: ${statusCode}, Message: ${errorMsg}`);
             if (errorMsg.includes('Resource not found') || errorMsg.includes('404') || errorMsg.includes('Not Found')) {
                 this.logger.info(`Tag ${tag} already deleted`);
-                this.logger.debug(`[Gitea] deleteTag: Tag already deleted, returning successfully`);
                 return;
             }
-            this.logger.error(`[Gitea] deleteTag: Failed to delete tag ${tag}: ${errorMsg}`);
+            this.logger.error(`[Gitea] Failed to delete tag ${tag}: ${errorMsg}`);
             throw new Error(`Failed to delete tag ${tag}: ${errorMsg}`);
         }
     }
     async getManifest(packageName, reference) {
+        this.logger.debug(`[Gitea] Fetching manifest for package: ${packageName}, reference: ${reference}`);
         if (!this.authenticated) {
             await this.authenticate();
         }
@@ -29040,6 +28665,7 @@ class GiteaProvider extends base_1.BaseProvider {
         return this.convertToManifest(digest, ociManifest);
     }
     async deleteManifest(packageName, digest) {
+        this.logger.debug(`[Gitea] Deleting manifest: ${digest} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();
         }
@@ -29059,6 +28685,7 @@ class GiteaProvider extends base_1.BaseProvider {
         }
     }
     async getReferrers(packageName, digest) {
+        this.logger.debug(`[Gitea] Fetching referrers for package: ${packageName}, digest: ${digest}`);
         if (!this.supportsFeature('REFERRERS')) {
             return [];
         }

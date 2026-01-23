@@ -54,28 +54,25 @@ class GenericOCIProvider extends base_1.BaseProvider {
         };
     }
     async authenticate() {
-        this.logger.debug(`[GenericOCI] authenticate: Starting authentication with OCI registry at ${this.registryUrl}`);
+        this.logger.debug(`[GenericOCI] Authenticating with OCI registry at ${this.registryUrl}`);
         try {
-            // Test authentication by calling registry API version endpoint
             const url = `${this.registryUrl}/v2/`;
-            this.logger.debug(`[GenericOCI] authenticate: Calling ${url}`);
+            this.logger.debug(`[GenericOCI] Testing authentication with ${url}`);
             const response = await this.httpClient.get(url, this.getRegistryAuthHeaders());
-            this.logger.debug(`[GenericOCI] authenticate: Response status ${response.status}`);
             // 200 = success, 401 = unauthorized (but auth format is valid)
             // 403 = forbidden (auth valid but insufficient permissions)
             if (response.status === 200 || response.status === 401 || response.status === 403) {
                 this.authenticated = true;
-                this.logger.debug(`[GenericOCI] authenticate: Successfully authenticated with OCI registry (status: ${response.status})`);
+                this.logger.debug(`[GenericOCI] Authentication successful (status: ${response.status})`);
             }
             else {
-                this.logger.debug(`[GenericOCI] authenticate: Unexpected response status ${response.status}`);
                 throw new types_1.AuthenticationError(`Unexpected response status: ${response.status}`, 'oci');
             }
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GenericOCI] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[GenericOCI] Authentication error - Status: ${statusCode}, Message: ${errorMsg}`);
             if (error instanceof types_1.AuthenticationError) {
                 throw error;
             }
@@ -86,9 +83,8 @@ class GenericOCIProvider extends base_1.BaseProvider {
         }
     }
     async listPackages() {
-        this.logger.debug(`[GenericOCI] listPackages: Starting package discovery`);
+        this.logger.debug(`[GenericOCI] Listing all packages (OCI Registry V2 API limitation: package names must be provided explicitly)`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] listPackages: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // OCI Registry V2 API does not provide a standard way to list all packages/repositories
@@ -99,9 +95,8 @@ class GenericOCIProvider extends base_1.BaseProvider {
         return [];
     }
     async getPackageManifests(packageName) {
-        this.logger.debug(`[GenericOCI] getPackageManifests: Starting for package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Getting all manifests for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] getPackageManifests: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const manifests = [];
@@ -124,9 +119,8 @@ class GenericOCIProvider extends base_1.BaseProvider {
         return manifests;
     }
     async listTags(packageName) {
-        this.logger.debug(`[GenericOCI] listTags: Starting for package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Listing all tags for package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] listTags: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getTagsUrl(packageName);
@@ -169,27 +163,20 @@ class GenericOCIProvider extends base_1.BaseProvider {
         }
     }
     async deleteTag(packageName, tag) {
-        this.logger.debug(`[GenericOCI] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Deleting tag: ${tag} from package: ${packageName} (will delete manifest and all tags pointing to it)`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] deleteTag: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         // OCI V2 API limitation: Cannot delete individual tags
         // We can only delete manifests, which deletes ALL tags pointing to that manifest
-        // Get the manifest digest for this tag
-        this.logger.debug(`[GenericOCI] deleteTag: Fetching manifest for tag ${tag}`);
         const manifest = await this.getManifest(packageName, tag);
-        this.logger.debug(`[GenericOCI] deleteTag: Manifest digest: ${manifest.digest}`);
-        this.logger.debug(`[GenericOCI] deleteTag: WARNING - Deleting manifest will delete ALL tags pointing to it`);
-        // Delete the manifest (this will delete all tags pointing to it)
+        this.logger.debug(`[GenericOCI] Manifest digest: ${manifest.digest} - WARNING: Deleting manifest will delete ALL tags pointing to it`);
         await this.deleteManifest(packageName, manifest.digest);
         this.logger.info(`Deleted tag ${tag} (and all other tags pointing to manifest ${manifest.digest}) from package ${packageName}`);
-        this.logger.debug(`[GenericOCI] deleteTag: Successfully deleted tag ${tag}`);
     }
     async getManifest(packageName, reference) {
-        this.logger.debug(`[GenericOCI] getManifest: Starting for package ${packageName}, reference ${reference}`);
+        this.logger.debug(`[GenericOCI] Fetching manifest for package: ${packageName}, reference: ${reference}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] getManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getManifestUrl(packageName, reference);
@@ -217,33 +204,30 @@ class GenericOCIProvider extends base_1.BaseProvider {
         }
     }
     async deleteManifest(packageName, digest) {
-        this.logger.debug(`[GenericOCI] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
+        this.logger.debug(`[GenericOCI] Deleting manifest: ${digest} from package: ${packageName}`);
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] deleteManifest: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         const url = this.getManifestUrl(packageName, digest);
-        this.logger.debug(`[GenericOCI] deleteManifest: Deleting manifest from ${url}`);
+        this.logger.debug(`[GenericOCI] Deleting manifest from ${url}`);
         try {
             const response = await this.httpClient.delete(url, this.getRegistryAuthHeaders());
-            this.logger.debug(`[GenericOCI] deleteManifest: Response status ${response.status}`);
+            this.logger.debug(`[GenericOCI] Manifest deletion response: ${response.status}`);
             this.logger.info(`Deleted manifest ${digest} from package ${packageName}`);
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Unknown error';
             const statusCode = error instanceof Error && 'statusCode' in error ? error.statusCode : 'unknown';
-            this.logger.debug(`[GenericOCI] deleteManifest: Error - Status: ${statusCode}, Message: ${errorMsg}`);
+            this.logger.debug(`[GenericOCI] Manifest deletion error - Status: ${statusCode}, Message: ${errorMsg}`);
             throw new Error(`Failed to delete manifest ${digest} from ${packageName}: ${errorMsg}`);
         }
     }
     async getReferrers(packageName, digest) {
-        this.logger.debug(`[GenericOCI] getReferrers: Starting for package ${packageName}, digest ${digest}`);
+        this.logger.debug(`[GenericOCI] Fetching referrers for package: ${packageName}, digest: ${digest}`);
         if (!this.supportsFeature('REFERRERS')) {
-            this.logger.debug(`[GenericOCI] getReferrers: REFERRERS feature not supported, returning empty array`);
             return [];
         }
         if (!this.authenticated) {
-            this.logger.debug(`[GenericOCI] getReferrers: Not authenticated, authenticating...`);
             await this.authenticate();
         }
         try {

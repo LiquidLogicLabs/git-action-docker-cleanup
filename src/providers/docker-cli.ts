@@ -107,7 +107,7 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async authenticate(): Promise<void> {
-    this.logger.debug(`[DockerCLI] authenticate: Starting authentication with registry ${this.registryUrl}`);
+    this.logger.debug(`[DockerCLI] Authenticating with registry: ${this.registryUrl} (optional for local operations)`);
     
     // Authentication is optional for Docker CLI provider since it only works with local images
     // If credentials are provided, we'll login to the registry (useful for pulling images or if Docker has cached credentials)
@@ -149,11 +149,9 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async listPackages(): Promise<Package[]> {
-    this.logger.debug(`[DockerCLI] listPackages: Starting package discovery from local Docker images`);
-    
+    this.logger.debug(`[DockerCLI] Listing all packages from local Docker images (registry: ${this.registryUrl})`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
-      this.logger.debug(`[DockerCLI] listPackages: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -196,11 +194,9 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async getPackageManifests(packageName: string): Promise<Manifest[]> {
-    this.logger.debug(`[DockerCLI] getPackageManifests: Starting for package ${packageName}`);
-    
+    this.logger.debug(`[DockerCLI] Getting all manifests for package: ${packageName} from local Docker images`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
-      this.logger.debug(`[DockerCLI] getPackageManifests: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -226,11 +222,9 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async listTags(packageName: string): Promise<Tag[]> {
-    this.logger.debug(`[DockerCLI] listTags: Starting for package ${packageName}`);
-    
+    this.logger.debug(`[DockerCLI] Listing all tags for package: ${packageName} from local Docker images`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
-      this.logger.debug(`[DockerCLI] listTags: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -280,11 +274,9 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async deleteTag(packageName: string, tag: string): Promise<void> {
-    this.logger.debug(`[DockerCLI] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
-    
+    this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
-      this.logger.debug(`[DockerCLI] deleteTag: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -314,11 +306,9 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async getManifest(packageName: string, reference: string): Promise<Manifest> {
-    this.logger.debug(`[DockerCLI] getManifest: Starting for package ${packageName}, reference ${reference}`);
-    
+    this.logger.debug(`[DockerCLI] Inspecting local Docker image manifest: ${packageName}:${reference}`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
-      this.logger.debug(`[DockerCLI] getManifest: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -400,11 +390,9 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async deleteManifest(packageName: string, digest: string): Promise<void> {
-    this.logger.debug(`[DockerCLI] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
-    
+    this.logger.debug(`[DockerCLI] Deleting local Docker images matching manifest digest: ${digest} from package: ${packageName}`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
-      this.logger.debug(`[DockerCLI] deleteManifest: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
@@ -451,8 +439,7 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async getReferrers(packageName: string, digest: string): Promise<Referrer[]> {
-    this.logger.debug(`[DockerCLI] getReferrers: Starting for package ${packageName}, digest ${digest}`);
-    this.logger.debug(`[DockerCLI] getReferrers: Docker CLI doesn't support referrers API, returning empty array`);
+    this.logger.debug(`[DockerCLI] Fetching referrers for package: ${packageName}, digest: ${digest} (Docker CLI doesn't support referrers API, returning empty array)`);
     return [];
   }
 

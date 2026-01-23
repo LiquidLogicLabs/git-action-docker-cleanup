@@ -13,15 +13,15 @@ import { HttpClient } from '../utils/api';
 
 /**
  * Docker Hub provider
- * Uses OCI Registry V2 API
+ * Uses Docker Hub API exclusively (no OCI Registry V2 API)
  */
 export class DockerHubProvider extends BaseProvider {
   private readonly username?: string;
   private readonly password?: string;
   private readonly token?: string;
-  protected readonly registryUrl = 'https://registry-1.docker.io';
-  private cachedToken?: string;
-  private tokenExpiry?: Date;
+  private readonly hubApiUrl = 'https://hub.docker.com/v2';
+  private hubToken?: string;
+  private hubTokenExpiry?: Date;
 
   constructor(logger: Logger, config: ProviderConfig, httpClient: HttpClient) {
     super(logger, config, httpClient);
@@ -30,466 +30,288 @@ export class DockerHubProvider extends BaseProvider {
     this.password = config.password;
     this.token = config.token;
 
-    if (!this.token && !this.username) {
-      throw new Error('Authentication required: provide either token or username/password for Docker Hub');
-    }
-
-    if (this.username && !this.password) {
-      throw new Error('registry-password is required when registry-username is provided');
+    // Docker Hub provider requires username/password (token can be used as password)
+    if (!this.username || (!this.password && !this.token)) {
+      throw new Error('Docker Hub provider requires registry-username and registry-password (or token to use as password)');
     }
   }
 
   protected getAuthHeaders(): Record<string, string> {
-    if (this.token) {
-      return {
-        Authorization: `Bearer ${this.token}`,
-      };
-    }
+    // Not used for Hub API - we use JWT tokens
     return {};
   }
 
-  protected async getDockerHubToken(packageName?: string): Promise<string> {
-    this.logger.debug(`[DockerHub] getDockerHubToken: Starting token acquisition${packageName ? ` for package ${packageName}` : ''}`);
-    
-    // If a static token is provided, use it directly
-    if (this.token) {
-      this.logger.debug(`[DockerHub] getDockerHubToken: Using static token`);
-      return this.token;
+  private getRepositoryParts(packageName: string): { namespace: string; repo: string } {
+    if (packageName.includes('/')) {
+      const [namespace, ...rest] = packageName.split('/');
+      return { namespace, repo: rest.join('/') };
     }
-
-    // Check if we have a cached token that's still valid
-    if (this.cachedToken && this.tokenExpiry && this.tokenExpiry.getTime() > Date.now()) {
-      this.logger.debug(`[DockerHub] getDockerHubToken: Using cached token (expires: ${this.tokenExpiry.toISOString()})`);
-      return this.cachedToken;
+    if (!this.username) {
+      throw new Error('Docker Hub namespace is required when package name does not include a namespace');
     }
-
-    if (!this.username || !this.password) {
-      this.logger.debug(`[DockerHub] getDockerHubToken: No credentials available`);
-      throw new AuthenticationError('Docker Hub credentials required', 'docker-hub');
-    }
-
-    // Get token from Docker Hub auth service
-    const authUrl = 'https://auth.docker.io/token';
-    const service = 'registry.docker.io';
-    
-    // Use repository-specific scope if package name is provided, otherwise use catalog scope
-    // Format: repository:username/repo:pull,push,delete
-    let scope = 'registry:catalog:*';
-    if (packageName && this.username) {
-      // Extract repo name from packageName (might be username/repo or just repo)
-      const repoName = packageName.includes('/') ? packageName : `${this.username}/${packageName}`;
-      scope = `repository:${repoName}:pull,repository:${repoName}:push,repository:${repoName}:delete`;
-      this.logger.debug(`[DockerHub] getDockerHubToken: Using repository-specific scope: ${scope}`);
-    } else {
-      this.logger.debug(`[DockerHub] getDockerHubToken: Using catalog scope: ${scope}`);
-    }
-
-    const tokenUrl = `${authUrl}?service=${service}&scope=${scope}`;
-    this.logger.debug(`[DockerHub] getDockerHubToken: Requesting token from ${tokenUrl}`);
-    
-    try {
-      const response = await this.httpClient.get<{ token: string; expires_in?: number }>(
-        tokenUrl,
-        {
-          Authorization: `Basic ${Buffer.from(`${this.username}:${this.password}`).toString('base64')}`,
-        }
-      );
-
-      this.logger.debug(`[DockerHub] getDockerHubToken: Response status ${response.status}`);
-
-      if (!response.data || !response.data.token) {
-        this.logger.debug(`[DockerHub] getDockerHubToken: No token in response`);
-        throw new AuthenticationError('Failed to get Docker Hub token', 'docker-hub');
-      }
-
-      // Cache the token with expiration (default to 5 minutes if not provided)
-      this.cachedToken = response.data.token;
-      const expiresIn = response.data.expires_in || 300; // Default to 5 minutes
-      this.tokenExpiry = new Date(Date.now() + (expiresIn - 60) * 1000); // Subtract 60s for safety
-      this.logger.debug(`[DockerHub] getDockerHubToken: Successfully obtained token, expires in ${expiresIn}s (cached until ${this.tokenExpiry.toISOString()})`);
-
-      return this.cachedToken;
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[DockerHub] getDockerHubToken: Error - Status: ${statusCode}, Message: ${errorMsg}`);
-      throw error;
-    }
+    return { namespace: this.username, repo: packageName };
   }
 
-  protected getRegistryAuthHeaders(): Record<string, string> {
-    // This will be set after authentication
-    return {
-      Accept: 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json',
-    };
+  private async getHubToken(): Promise<string> {
+    if (this.hubToken && this.hubTokenExpiry && this.hubTokenExpiry.getTime() > Date.now()) {
+      this.logger.debug(`[DockerHub] getHubToken: Using cached Hub token (expires: ${this.hubTokenExpiry.toISOString()})`);
+      return this.hubToken;
+    }
+
+    const password = this.password || this.token;
+    if (!this.username || !password) {
+      throw new AuthenticationError('Docker Hub username/password required for Hub API', 'docker-hub');
+    }
+
+    const url = `${this.hubApiUrl}/users/login/`;
+    this.logger.debug(`[DockerHub] getHubToken: Requesting Hub token from ${url}`);
+
+    const response = await this.httpClient.post<{ token: string }>(
+      url,
+      { username: this.username, password },
+      { 'Content-Type': 'application/json' }
+    );
+
+    if (!response.data?.token) {
+      throw new AuthenticationError('Failed to obtain Docker Hub API token', 'docker-hub');
+    }
+
+    this.hubToken = response.data.token;
+    this.hubTokenExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    this.logger.debug('[DockerHub] getHubToken: Successfully obtained Hub token');
+    return this.hubToken;
   }
 
   async authenticate(): Promise<void> {
-    this.logger.debug(`[DockerHub] authenticate: Starting authentication with Docker Hub`);
+    this.logger.debug(`[DockerHub] Authenticating with Docker Hub API`);
     
     try {
-      // Get token (will use cached token if available and valid)
-      const token = await this.getDockerHubToken();
-      
-      if (!token) {
-        this.logger.debug(`[DockerHub] authenticate: Failed to obtain token`);
-        throw new AuthenticationError('Failed to obtain Docker Hub token', 'docker-hub');
-      }
-
-      // Test authentication by calling registry API
-      // Use a simple endpoint that requires authentication
-      const url = `${this.registryUrl}/v2/`;
-      this.logger.debug(`[DockerHub] authenticate: Testing authentication with ${url}`);
-      
-      const response = await this.httpClient.get(
-        url,
-        {
-          ...this.getRegistryAuthHeaders(),
-          Authorization: `Bearer ${token}`,
-        }
-      );
-
-      this.logger.debug(`[DockerHub] authenticate: Response status ${response.status}`);
-
-      // 200 = success, 401 = unauthorized (but token format is valid)
-      // 403 = forbidden (token valid but insufficient permissions)
-      // Any of these means the token was processed correctly
-      if (response.status === 200 || response.status === 401 || response.status === 403) {
-        this.authenticated = true;
-        this.logger.debug(`[DockerHub] authenticate: Successfully authenticated with Docker Hub (status: ${response.status})`);
-      } else {
-        this.logger.debug(`[DockerHub] authenticate: Unexpected response status ${response.status}`);
-        throw new AuthenticationError(`Unexpected response status: ${response.status}`, 'docker-hub');
-      }
+      await this.getHubToken();
+      this.logger.debug(`[DockerHub] Docker Hub API authentication successful`);
+      this.authenticated = true;
     } catch (error) {
-      // Clear cached token on authentication failure
-      this.cachedToken = undefined;
-      this.tokenExpiry = undefined;
-      this.logger.debug(`[DockerHub] authenticate: Cleared cached token due to authentication failure`);
-      
-      if (error instanceof AuthenticationError) {
-        throw error;
-      }
-      
-      // Provide more detailed error message
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[DockerHub] authenticate: Error - Status: ${statusCode}, Message: ${errorMsg}`);
-      
-      if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-        throw new AuthenticationError(
-          'Docker Hub authentication failed: Invalid credentials. Please check your username and password/token.',
-          'docker-hub'
-        );
-      }
-      
+      this.logger.debug(`[DockerHub] Docker Hub API authentication failed: ${errorMsg}`);
       throw new AuthenticationError(
-        `Docker Hub authentication failed: ${errorMsg}`,
+        'Docker Hub authentication failed: Invalid credentials. Please check your username and password/token.',
         'docker-hub'
       );
     }
   }
 
   async listPackages(): Promise<Package[]> {
-    this.logger.debug(`[DockerHub] listPackages: Starting package discovery`);
-    
+    this.logger.debug(`[DockerHub] Listing all packages`);
     if (!this.authenticated) {
-      this.logger.debug(`[DockerHub] listPackages: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
-    // Docker Hub doesn't provide a simple way to list all packages for a user
-    // We'll return an empty array and rely on package name being provided
-    this.logger.debug(`[DockerHub] listPackages: Docker Hub does not support listing all packages`);
-    this.logger.warning('Docker Hub does not support listing all packages. Please specify package names explicitly.');
-    return [];
+    const packages: Package[] = [];
+    let page = 1;
+    const pageSize = 100;
+    const token = await this.getHubToken();
+
+    while (true) {
+      const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
+      this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
+      const response = await this.httpClient.get<{
+        results: Array<{
+          name: string;
+          namespace: string;
+          created_at?: string;
+          last_updated?: string;
+        }>;
+      }>(url, { Authorization: `JWT ${token}` });
+
+      const results = response.data?.results || [];
+      this.logger.debug(`[DockerHub] Received ${results.length} repositories from page ${page}`);
+
+      if (results.length === 0) {
+        break;
+      }
+
+      for (const repo of results) {
+        packages.push({
+          id: `${repo.namespace}/${repo.name}`,
+          name: `${repo.namespace}/${repo.name}`,
+          type: 'container',
+          owner: repo.namespace,
+          createdAt: repo.created_at ? new Date(repo.created_at) : undefined,
+          updatedAt: repo.last_updated ? new Date(repo.last_updated) : undefined,
+        });
+      }
+
+      if (results.length < pageSize) {
+        break;
+      }
+      page += 1;
+    }
+
+    this.logger.debug(`[DockerHub] Found ${packages.length} total repositories`);
+    return packages;
   }
 
   async getPackageManifests(packageName: string): Promise<Manifest[]> {
+    this.logger.debug(`[DockerHub] Getting all manifests for package: ${packageName}`);
     if (!this.authenticated) {
       await this.authenticate();
     }
 
-    const manifests: Manifest[] = [];
     const tags = await this.listTags(packageName);
-
+    const manifests: Manifest[] = [];
+    
+    // Group tags by digest to create manifests
+    const digestMap = new Map<string, { digest: string; createdAt?: Date; updatedAt?: Date }>();
+    
     for (const tag of tags) {
-      try {
-        const manifest = await this.getManifest(packageName, tag.digest);
-        manifests.push(manifest);
-      } catch (error) {
-        this.logger.warning(`Failed to get manifest for ${packageName}@${tag.digest}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const digest = tag.digest;
+      if (!digestMap.has(digest)) {
+        digestMap.set(digest, {
+          digest,
+          createdAt: tag.createdAt,
+          updatedAt: tag.updatedAt,
+        });
+      }
+      const manifestData = digestMap.get(digest)!;
+      // Use the earliest createdAt and latest updatedAt
+      if (tag.createdAt && (!manifestData.createdAt || tag.createdAt < manifestData.createdAt)) {
+        manifestData.createdAt = tag.createdAt;
+      }
+      if (tag.updatedAt && (!manifestData.updatedAt || tag.updatedAt > manifestData.updatedAt)) {
+        manifestData.updatedAt = tag.updatedAt;
       }
     }
-
+    
+    // Convert to Manifest objects
+    for (const manifestData of digestMap.values()) {
+      manifests.push({
+        digest: manifestData.digest,
+        createdAt: manifestData.createdAt,
+        updatedAt: manifestData.updatedAt,
+        size: 0, // Hub API doesn't provide size
+        mediaType: 'application/vnd.docker.distribution.manifest.v2+json', // Default
+      });
+    }
+    
+    this.logger.debug(`[DockerHub] Constructed ${manifests.length} manifests from Hub API tag data`);
     return manifests;
   }
 
   async listTags(packageName: string): Promise<Tag[]> {
-    this.logger.debug(`[DockerHub] listTags: Starting for package ${packageName}`);
+    this.logger.debug(`[DockerHub] Listing tags for package: ${packageName}`);
     
     if (!this.authenticated) {
-      this.logger.debug(`[DockerHub] listTags: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
-    const token = await this.getDockerHubToken(packageName);
-    const url = this.getTagsUrl(packageName);
-    this.logger.debug(`[DockerHub] listTags: Fetching tags from ${url}`);
-    
-    try {
-      const response = await this.httpClient.get<{ tags: string[] }>(
-        url,
-        {
-          ...this.getRegistryAuthHeaders(),
-          Authorization: `Bearer ${token}`,
-        }
-      );
+    const { namespace, repo } = this.getRepositoryParts(packageName);
+    const token = await this.getHubToken();
+    let page = 1;
+    const pageSize = 100;
+    const tags: Tag[] = [];
 
-      this.logger.debug(`[DockerHub] listTags: Response status ${response.status}, received ${response.data?.tags?.length || 0} tag names`);
+    while (true) {
+      const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
+      this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);
+      const response = await this.httpClient.get<{
+        results: Array<{
+          name: string;
+          last_updated?: string;
+          images?: Array<{ digest?: string }>;
+        }>;
+      }>(url, { Authorization: `JWT ${token}` });
 
-      if (!response.data || !response.data.tags) {
-        this.logger.debug(`[DockerHub] listTags: No tags in response, returning empty array`);
-        return [];
+      const results = response.data?.results || [];
+      this.logger.debug(`[DockerHub] Received ${results.length} tags from page ${page}`);
+
+      if (results.length === 0) {
+        break;
       }
 
-      const tags: Tag[] = [];
-
-      for (const tagName of response.data.tags) {
-        this.logger.debug(`[DockerHub] listTags: Processing tag ${tagName}`);
-        try {
-          const manifest = await this.getManifest(packageName, tagName);
-          tags.push({
-            name: tagName,
-            digest: manifest.digest,
-            createdAt: manifest.createdAt,
-            updatedAt: manifest.updatedAt,
-          });
-          this.logger.debug(`[DockerHub] listTags: Tag ${tagName} mapped to digest ${manifest.digest}`);
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          this.logger.debug(`[DockerHub] listTags: Could not get manifest for tag ${tagName}: ${errorMsg}`);
-        }
+      for (const tag of results) {
+        const digest = tag.images?.find(image => image.digest)?.digest;
+        tags.push({
+          name: tag.name,
+          digest: digest || tag.name,
+          createdAt: tag.last_updated ? new Date(tag.last_updated) : undefined,
+          updatedAt: tag.last_updated ? new Date(tag.last_updated) : undefined,
+        });
       }
 
-      this.logger.debug(`[DockerHub] listTags: Completed, returning ${tags.length} tags`);
-      return tags;
-    } catch (error) {
-      // If token expired, clear cache and retry once
-      if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-        this.logger.debug('Token may have expired, clearing cache and retrying');
-        this.cachedToken = undefined;
-        this.tokenExpiry = undefined;
-        const newToken = await this.getDockerHubToken(packageName);
-        const response = await this.httpClient.get<{ tags: string[] }>(
-          url,
-          {
-            ...this.getRegistryAuthHeaders(),
-            Authorization: `Bearer ${newToken}`,
-          }
-        );
-        if (!response.data || !response.data.tags) {
-          return [];
-        }
-        // Process tags as above
-        const tags: Tag[] = [];
-        for (const tagName of response.data.tags) {
-          try {
-            const manifest = await this.getManifest(packageName, tagName);
-            tags.push({
-              name: tagName,
-              digest: manifest.digest,
-              createdAt: manifest.createdAt,
-              updatedAt: manifest.updatedAt,
-            });
-          } catch (err) {
-            this.logger.debug(`Could not get manifest for tag ${tagName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-          }
-        }
-        return tags;
+      if (results.length < pageSize) {
+        break;
       }
-      throw error;
+      page += 1;
     }
+
+    this.logger.debug(`[DockerHub] Found ${tags.length} total tags via Hub API`);
+    return tags;
   }
 
   async deleteTag(packageName: string, tag: string): Promise<void> {
-    this.logger.debug(`[DockerHub] deleteTag: Starting deletion of tag ${tag} from package ${packageName}`);
+    this.logger.debug(`[DockerHub] Deleting tag: ${tag} from package: ${packageName}`);
     
     if (!this.authenticated) {
-      this.logger.debug(`[DockerHub] deleteTag: Not authenticated, authenticating...`);
       await this.authenticate();
     }
 
-    // Get manifest digest for the tag
-    this.logger.debug(`[DockerHub] deleteTag: Fetching manifest for tag ${tag}`);
-    const manifest = await this.getManifest(packageName, tag);
-    this.logger.debug(`[DockerHub] deleteTag: Manifest digest: ${manifest.digest}`);
-    
-    // Delete via registry API
-    this.logger.debug(`[DockerHub] deleteTag: Deleting manifest via deleteManifest`);
-    await this.deleteManifest(packageName, manifest.digest);
-    this.logger.debug(`[DockerHub] deleteTag: Successfully deleted tag ${tag}`);
+    const { namespace, repo } = this.getRepositoryParts(packageName);
+    const token = await this.getHubToken();
+    const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags/${tag}/`;
+    this.logger.debug(`[DockerHub] Deleting tag via Hub API: ${url}`);
+    await this.httpClient.delete(url, { Authorization: `JWT ${token}` });
+    this.logger.info(`Deleted tag ${tag} from package ${packageName}`);
   }
 
   async getManifest(packageName: string, reference: string): Promise<Manifest> {
+    this.logger.debug(`[DockerHub] Getting manifest for package: ${packageName}, reference: ${reference}`);
+    
     if (!this.authenticated) {
       await this.authenticate();
     }
 
-    const token = await this.getDockerHubToken(packageName);
-    const url = this.getManifestUrl(packageName, reference);
-    const headers = {
-      ...this.getRegistryAuthHeaders(),
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json',
-    };
-
-    try {
-      const response = await this.httpClient.get<string>(url, headers);
-      
-      if (!response.data || typeof response.data !== 'string') {
-        throw new Error('Invalid manifest response');
-      }
-
-      // Parse JSON string to object
-      const manifestData = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
-      const ociManifest = this.parseOCIManifest(manifestData);
-      const digest = response.headers?.['docker-content-digest'] || reference;
-
-      return this.convertToManifest(digest, ociManifest);
-    } catch (error) {
-      // If token expired, clear cache and retry once
-      if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-        this.logger.debug('Token may have expired, clearing cache and retrying');
-        this.cachedToken = undefined;
-        this.tokenExpiry = undefined;
-        const newToken = await this.getDockerHubToken(packageName);
-        const response = await this.httpClient.get<string>(url, {
-          ...headers,
-          Authorization: `Bearer ${newToken}`,
-        });
-        if (!response.data || typeof response.data !== 'string') {
-          throw new Error('Invalid manifest response');
-        }
-        // Parse JSON string to object
-      const manifestData = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
-      const ociManifest = this.parseOCIManifest(manifestData);
-        const digest = response.headers?.['docker-content-digest'] || reference;
-        return this.convertToManifest(digest, ociManifest);
-      }
-      throw error;
+    // Construct manifest from Hub API tag data
+    // Find the tag that matches the reference (could be tag name or digest)
+    const tags = await this.listTags(packageName);
+    const matchingTag = tags.find(t => t.name === reference || t.digest === reference);
+    
+    if (!matchingTag) {
+      throw new Error(`Tag or digest not found: ${reference}`);
     }
+
+    // Construct minimal manifest from tag data
+    return {
+      digest: matchingTag.digest,
+      createdAt: matchingTag.createdAt,
+      updatedAt: matchingTag.updatedAt,
+      size: 0, // Hub API doesn't provide size
+      mediaType: 'application/vnd.docker.distribution.manifest.v2+json', // Default
+    };
   }
 
   async deleteManifest(packageName: string, digest: string): Promise<void> {
-    this.logger.debug(`[DockerHub] deleteManifest: Starting deletion of manifest ${digest} from package ${packageName}`);
-    
-    if (!this.authenticated) {
-      this.logger.debug(`[DockerHub] deleteManifest: Not authenticated, authenticating...`);
-      await this.authenticate();
-    }
-
-    const token = await this.getDockerHubToken(packageName);
-    const url = this.getManifestUrl(packageName, digest);
-    this.logger.debug(`[DockerHub] deleteManifest: Deleting manifest from ${url}`);
-    
-    try {
-      const response = await this.httpClient.delete(url, {
-        ...this.getRegistryAuthHeaders(),
-        Authorization: `Bearer ${token}`,
-      });
-      this.logger.debug(`[DockerHub] deleteManifest: Response status ${response.status}`);
-      this.logger.info(`Deleted manifest ${digest} from package ${packageName}`);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[DockerHub] deleteManifest: Error - Status: ${statusCode}, Message: ${errorMsg}`);
-      
-      // If token expired, clear cache and retry once
-      if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-        this.logger.debug('[DockerHub] deleteManifest: Token may have expired, clearing cache and retrying');
-        this.cachedToken = undefined;
-        this.tokenExpiry = undefined;
-        const newToken = await this.getDockerHubToken(packageName);
-        this.logger.debug(`[DockerHub] deleteManifest: Retrying deletion with new token`);
-        const retryResponse = await this.httpClient.delete(url, {
-          ...this.getRegistryAuthHeaders(),
-          Authorization: `Bearer ${newToken}`,
-        });
-        this.logger.debug(`[DockerHub] deleteManifest: Retry response status ${retryResponse.status}`);
-        this.logger.info(`Deleted manifest ${digest} from package ${packageName}`);
-      } else {
-        throw error;
-      }
-    }
+    this.logger.debug(`[DockerHub] deleteManifest called for digest: ${digest}`);
+    // Docker Hub API doesn't support direct manifest deletion
+    // We can only delete tags, which will delete the manifest if it's the last tag
+    // This method is not used in practice since we delete tags, not manifests
+    throw new Error('Docker Hub API does not support direct manifest deletion. Delete tags instead.');
   }
 
   async getReferrers(packageName: string, digest: string): Promise<Referrer[]> {
-    this.logger.debug(`[DockerHub] getReferrers: Starting for package ${packageName}, digest ${digest}`);
-    
-    if (!this.supportsFeature('REFERRERS')) {
-      this.logger.debug(`[DockerHub] getReferrers: REFERRERS feature not supported, returning empty array`);
-      return [];
-    }
-
-    if (!this.authenticated) {
-      this.logger.debug(`[DockerHub] getReferrers: Not authenticated, authenticating...`);
-      await this.authenticate();
-    }
-
-    try {
-      const token = await this.getDockerHubToken(packageName);
-      const url = this.getReferrersUrl(packageName, digest);
-      this.logger.debug(`[DockerHub] getReferrers: Fetching referrers from ${url}`);
-      
-      const response = await this.httpClient.get<{
-        manifests: Array<{
-          digest: string;
-          mediaType: string;
-          artifactType: string;
-          size: number;
-          annotations?: Record<string, string>;
-        }>;
-      }>(url, {
-        ...this.getRegistryAuthHeaders(),
-        Authorization: `Bearer ${token}`,
-      });
-
-      this.logger.debug(`[DockerHub] getReferrers: Response status ${response.status}, referrers: ${response.data?.manifests?.length || 0}`);
-
-      if (!response.data || !response.data.manifests) {
-        this.logger.debug(`[DockerHub] getReferrers: No referrers in response, returning empty array`);
-        return [];
-      }
-
-      const referrers = response.data.manifests.map(m => ({
-        digest: m.digest,
-        artifactType: m.artifactType,
-        mediaType: m.mediaType,
-        size: m.size,
-        annotations: m.annotations,
-      }));
-      this.logger.debug(`[DockerHub] getReferrers: Returning ${referrers.length} referrers`);
-      return referrers;
-    } catch (error) {
-      // Referrers API may not be supported, return empty array
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      const statusCode = error instanceof Error && 'statusCode' in error ? (error as any).statusCode : 'unknown';
-      this.logger.debug(`[DockerHub] getReferrers: Referrers API not available - Status: ${statusCode}, Message: ${errorMsg}`);
-      return [];
-    }
+    this.logger.debug(`[DockerHub] getReferrers called for package: ${packageName}, digest: ${digest}`);
+    // Docker Hub API doesn't support referrers
+    return [];
   }
 
   supportsFeature(feature: RegistryFeature): boolean {
     switch (feature) {
       case 'MULTI_ARCH':
-        return true;
+        return true; // Hub API provides digest info that can indicate multi-arch
       case 'REFERRERS':
-        return false; // Docker Hub may have limited referrers support
+        return false; // Hub API doesn't support referrers
       case 'ATTESTATION':
-        return false; // Docker Hub may have limited attestation support
+        return false; // Hub API doesn't support attestations
       case 'COSIGN':
-        return false; // Docker Hub may have limited cosign support
+        return false; // Hub API doesn't support cosign
       default:
         return false;
     }
@@ -500,6 +322,7 @@ export class DockerHubProvider extends BaseProvider {
   }
 
   protected getRegistryApiUrl(): string {
-    return `${this.registryUrl}/v2`;
+    // Not used - kept for BaseProvider compatibility
+    return '';
   }
 }
