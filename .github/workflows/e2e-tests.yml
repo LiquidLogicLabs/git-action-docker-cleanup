@@ -62,8 +62,8 @@ jobs:
             url: ghcr.io
             registry_host: ghcr.io
             image_name_format: 'ghcr.io/{prefix}/e2e-test-image'
-            username: ${{ vars.E2E_GHCR_USERNAME || github.repository_owner }}
-            token_secret: GITHUB_TOKEN
+            username: ${{ vars.E2E_GITHUB_USERNAME || github.repository_owner }}
+            token_secret: E2E_GITHUB_TOKEN
             package_prefix: ${{ github.repository_owner }}
             skip_if_missing: false
           - type: gitea
@@ -145,6 +145,8 @@ jobs:
           # Get password from secret (GitHub Actions doesn't support dynamic secret access)
           if [ "$TOKEN_SECRET_NAME" = "GITHUB_TOKEN" ]; then
             DOCKER_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
+          elif [ "$TOKEN_SECRET_NAME" = "E2E_GITHUB_TOKEN" ]; then
+            DOCKER_PASSWORD="${{ secrets.E2E_GITHUB_TOKEN }}"
           elif [ "$TOKEN_SECRET_NAME" = "E2E_GITEA_TOKEN" ]; then
             DOCKER_PASSWORD="${{ secrets.E2E_GITEA_TOKEN }}"
           elif [ "$TOKEN_SECRET_NAME" = "E2E_DOCKERHUB_TOKEN" ]; then
