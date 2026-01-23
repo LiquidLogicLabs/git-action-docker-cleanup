@@ -286,3 +286,4 @@ MIT
 ## Credits
 
 Based on the functionality of [ghcr-io-cleanup-action](https://github.com/marketplace/actions/ghcr-io-cleanup-action) by dataaxiom, extended to support multiple registries.
+# Test
