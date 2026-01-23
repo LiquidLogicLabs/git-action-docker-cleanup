@@ -6,6 +6,35 @@
 
 A GitHub/Gitea action that deletes untagged/tagged images from container registries. Supports multiple registries including GHCR, Gitea, Docker Hub, and any OCI-compliant registry via Docker CLI.
 
+## ⚠️ Important: Always Use Dry-Run First
+
+**This action permanently deletes tags and images from your registry. Deletions cannot be undone.**
+
+**Before running in production:**
+1. **Always test with `dry-run: true` first** to preview what will be deleted
+2. Review the output carefully to ensure only intended images/tags are marked for deletion
+3. Use `exclude-tags` to protect important tags (e.g., `latest`, `dev`, `main`)
+4. Start with a small scope (single package) before cleaning up multiple packages
+5. Verify your filters and patterns work as expected in dry-run mode
+
+**Example workflow:**
+```yaml
+# Step 1: Test with dry-run
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+  with:
+    registry-type: ghcr
+    package: my-package
+    dry-run: true  # ← Always start here!
+
+# Step 2: After reviewing dry-run output, remove dry-run for actual deletion
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+  with:
+    registry-type: ghcr
+    package: my-package
+    exclude-tags: latest,dev  # Protect important tags
+    # dry-run: false (default)
+```
+
 ## Features
 
 - **Multi-Registry Support**: Works with GHCR, Gitea, Docker Hub, and any OCI-compliant registry
@@ -83,6 +112,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
   with:
     registry-type: ghcr
     package: my-package
+    dry-run: true  # Test first!
     keep-n-tagged: 10
     exclude-tags: dev,latest
 ```
@@ -94,6 +124,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
   with:
     registry-type: ghcr
     package: my-package
+    dry-run: true  # Test first!
     delete-untagged: true
     keep-n-untagged: 5
 ```
@@ -233,10 +264,12 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 
 ## Security Considerations
 
-- **Tokens**: Use GitHub/Gitea secrets for authentication tokens
-- **Permissions**: Ensure tokens have appropriate scopes (`write:packages`, `delete:packages`)
-- **Dry-Run**: Always test with `dry-run: true` first
-- **Exclude Tags**: Use `exclude-tags` to protect important images (e.g., `latest`, `dev`)
+- **⚠️ Always Use Dry-Run First**: This action **permanently deletes** tags and images. Always test with `dry-run: true` first to preview deletions before running in production.
+- **Tokens**: Use GitHub/Gitea secrets for authentication tokens. Never commit tokens to your repository.
+- **Permissions**: Ensure tokens have appropriate scopes (`write:packages`, `delete:packages`). Use the minimum required permissions.
+- **Exclude Tags**: Use `exclude-tags` to protect important images (e.g., `latest`, `dev`, `main`, `stable`).
+- **Start Small**: Test with a single package before cleaning up multiple packages.
+- **Review Output**: Carefully review dry-run output to ensure only intended images/tags are marked for deletion.
 
 ## Migration from ghcr-io-cleanup-action
 
