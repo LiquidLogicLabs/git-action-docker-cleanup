@@ -8,7 +8,6 @@ import {
   ProviderConfig,
   OCIManifest,
   OCIIndex,
-  OCIDescriptor,
 } from '../types';
 import { Logger } from '../logger';
 import { HttpClient } from '../utils/api';

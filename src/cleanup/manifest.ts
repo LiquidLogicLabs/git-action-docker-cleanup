@@ -1,4 +1,4 @@
-import { Manifest, Image, Referrer, OCIManifest, OCIIndex } from '../types';
+import { Manifest, Image, OCIManifest, OCIIndex } from '../types';
 
 /**
  * Check if manifest is multi-architecture

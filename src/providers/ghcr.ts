@@ -112,6 +112,7 @@ export class GHCRProvider extends BaseProvider {
 
     const ownerApiBase = await this.getOwnerApiBase();
 
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
       this.logger.debug(`[GHCR] Fetching packages page ${page}`);
@@ -294,7 +295,6 @@ export class GHCRProvider extends BaseProvider {
       return [];
     }
 
-    const tags: Tag[] = [];
     const tagMap = new Map<string, { tag: Tag; versionId: number }>();
 
     // Collect all tags from all versions

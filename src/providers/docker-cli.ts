@@ -6,7 +6,6 @@ import {
   Referrer,
   RegistryFeature,
   ProviderConfig,
-  AuthenticationError,
 } from '../types';
 import { IRegistryProvider } from '../types';
 import { Logger } from '../logger';
@@ -42,7 +41,7 @@ export class DockerCLIProvider implements IRegistryProvider {
 
   private normalizeRegistryUrl(url: string): string {
     // Remove protocol and trailing slash
-    let normalized = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const normalized = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
     return normalized;
   }
 

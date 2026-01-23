@@ -1,11 +1,10 @@
 import { Image, CleanupConfig } from '../types';
-import { parseOlderThan, expandPackages } from '../utils/validation';
+import { parseOlderThan } from '../utils/validation';
 import {
   isMultiArchManifest,
   isPartialMultiArchImage,
   isOrphanedImage,
   isGhostImage,
-  isReferrerImage,
 } from './manifest';
 
 /**
@@ -61,7 +60,7 @@ export class ImageFilter {
   /**
    * Remove child images from multi-arch images
    */
-  private removeChildImages(images: Image[], allImages: Image[]): Image[] {
+  private removeChildImages(images: Image[], _allImages: Image[]): Image[] {
     const childDigests = new Set<string>();
 
     // Collect all child digests from multi-arch images
@@ -179,7 +178,6 @@ export class ImageFilter {
       });
 
     // Keep N latest
-    const toKeep = sorted.slice(0, this.config.keepNTagged);
     const toDelete = sorted.slice(this.config.keepNTagged);
 
     return toDelete;

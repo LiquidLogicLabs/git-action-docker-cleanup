@@ -102,6 +102,7 @@ export class GiteaProvider extends BaseProvider {
     let page = 1;
     const limit = 50;
 
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       const url = `${this.giteaApiUrl}/packages/${this.owner}?type=container&page=${page}&limit=${limit}`;
       this.logger.debug(`[Gitea] listPackages: Fetching page ${page} from ${url}`);
@@ -212,6 +213,7 @@ export class GiteaProvider extends BaseProvider {
     const limit = 50;
     
     try {
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
         this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);
