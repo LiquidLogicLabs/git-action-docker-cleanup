@@ -37,11 +37,13 @@ export class GHCRProvider extends BaseProvider {
       throw new Error('GitHub token is required for GHCR provider');
     }
 
-    this.owner = config.owner || process.env.GITHUB_REPOSITORY_OWNER || '';
+    // Default owner to current actor if not specified
+    // Try GITHUB_REPOSITORY_OWNER first (repository owner), then GITHUB_ACTOR (workflow actor)
+    this.owner = config.owner || process.env.GITHUB_REPOSITORY_OWNER || process.env.GITHUB_ACTOR || '';
     this.repository = config.repository || process.env.GITHUB_REPOSITORY?.split('/')[1] || '';
 
     if (!this.owner) {
-      throw new Error('Owner is required for GHCR provider');
+      throw new Error('Owner is required for GHCR provider. Either specify the owner input or ensure GITHUB_REPOSITORY_OWNER/GITHUB_ACTOR environment variable is set.');
     }
   }
 

@@ -25,10 +25,16 @@ class GiteaProvider extends base_1.BaseProvider {
         // Gitea registry is typically at <gitea-url>/v2, API is at <gitea-url>/api/v1
         const baseUrl = this.registryUrl.replace(/\/v2\/?$/, '');
         this.giteaApiUrl = `${baseUrl}/api/v1`;
-        this.owner = config.owner || '';
+        // Default owner to current actor if not specified
+        // Try GITEA_ACTOR first (Gitea Actions), then GITHUB_ACTOR (GitHub Actions), then GITHUB_REPOSITORY_OWNER
+        this.owner = config.owner ||
+            process.env.GITEA_ACTOR ||
+            process.env.GITHUB_ACTOR ||
+            process.env.GITHUB_REPOSITORY_OWNER ||
+            '';
         this.repository = config.repository || '';
         if (!this.owner) {
-            throw new Error('Owner is required for Gitea provider');
+            throw new Error('Owner is required for Gitea provider. Either specify the owner input or ensure GITEA_ACTOR/GITHUB_ACTOR/GITHUB_REPOSITORY_OWNER environment variable is set.');
         }
     }
     getAuthHeaders() {

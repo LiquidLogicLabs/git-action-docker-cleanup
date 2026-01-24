@@ -25,7 +25,13 @@ async function run(): Promise<void> {
     const registryUsername = core.getInput('registry-username');
     const registryPassword = core.getInput('registry-password');
     const token = core.getInput('token');
-    const owner = core.getInput('owner');
+    // Default owner to current actor if not specified
+    // Try GITEA_ACTOR first (Gitea Actions), then GITHUB_ACTOR (GitHub Actions), then GITHUB_REPOSITORY_OWNER
+    const owner = core.getInput('owner') || 
+                  process.env.GITEA_ACTOR || 
+                  process.env.GITHUB_ACTOR || 
+                  process.env.GITHUB_REPOSITORY_OWNER || 
+                  '';
     const repository = core.getInput('repository');
     const packageInput = core.getInput('package');
     const packagesInput = core.getInput('packages');
@@ -44,10 +50,7 @@ async function run(): Promise<void> {
     const validate = core.getBooleanInput('validate');
     const retry = parseInt(core.getInput('retry') || '3', 10);
     const throttle = parseInt(core.getInput('throttle') || '1000', 10);
-    // Handle verbose input - use getInput with default, then convert to boolean
-    // This ensures it works even if the input isn't provided or is in an unexpected format
-    const verboseInput = core.getInput('verbose') || 'false';
-    const verbose = verboseInput.toLowerCase() === 'true';
+    const verbose = core.getBooleanInput('verbose');
 
     // Parse package names
     const packages: string[] = [];

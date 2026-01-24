@@ -26509,7 +26509,13 @@ async function run() {
         const registryUsername = core.getInput('registry-username');
         const registryPassword = core.getInput('registry-password');
         const token = core.getInput('token');
-        const owner = core.getInput('owner');
+        // Default owner to current actor if not specified
+        // Try GITEA_ACTOR first (Gitea Actions), then GITHUB_ACTOR (GitHub Actions), then GITHUB_REPOSITORY_OWNER
+        const owner = core.getInput('owner') ||
+            process.env.GITEA_ACTOR ||
+            process.env.GITHUB_ACTOR ||
+            process.env.GITHUB_REPOSITORY_OWNER ||
+            '';
         const repository = core.getInput('repository');
         const packageInput = core.getInput('package');
         const packagesInput = core.getInput('packages');
@@ -26528,10 +26534,7 @@ async function run() {
         const validate = core.getBooleanInput('validate');
         const retry = parseInt(core.getInput('retry') || '3', 10);
         const throttle = parseInt(core.getInput('throttle') || '1000', 10);
-        // Handle verbose input - use getInput with default, then convert to boolean
-        // This ensures it works even if the input isn't provided or is in an unexpected format
-        const verboseInput = core.getInput('verbose') || 'false';
-        const verbose = verboseInput.toLowerCase() === 'true';
+        const verbose = core.getBooleanInput('verbose');
         // Parse package names
         const packages = [];
         if (packageInput) {
@@ -27947,10 +27950,12 @@ class GHCRProvider extends base_1.BaseProvider {
         if (!this.githubToken) {
             throw new Error('GitHub token is required for GHCR provider');
         }
-        this.owner = config.owner || process.env.GITHUB_REPOSITORY_OWNER || '';
+        // Default owner to current actor if not specified
+        // Try GITHUB_REPOSITORY_OWNER first (repository owner), then GITHUB_ACTOR (workflow actor)
+        this.owner = config.owner || process.env.GITHUB_REPOSITORY_OWNER || process.env.GITHUB_ACTOR || '';
         this.repository = config.repository || process.env.GITHUB_REPOSITORY?.split('/')[1] || '';
         if (!this.owner) {
-            throw new Error('Owner is required for GHCR provider');
+            throw new Error('Owner is required for GHCR provider. Either specify the owner input or ensure GITHUB_REPOSITORY_OWNER/GITHUB_ACTOR environment variable is set.');
         }
     }
     getAuthHeaders() {
@@ -28349,10 +28354,16 @@ class GiteaProvider extends base_1.BaseProvider {
         // Gitea registry is typically at <gitea-url>/v2, API is at <gitea-url>/api/v1
         const baseUrl = this.registryUrl.replace(/\/v2\/?$/, '');
         this.giteaApiUrl = `${baseUrl}/api/v1`;
-        this.owner = config.owner || '';
+        // Default owner to current actor if not specified
+        // Try GITEA_ACTOR first (Gitea Actions), then GITHUB_ACTOR (GitHub Actions), then GITHUB_REPOSITORY_OWNER
+        this.owner = config.owner ||
+            process.env.GITEA_ACTOR ||
+            process.env.GITHUB_ACTOR ||
+            process.env.GITHUB_REPOSITORY_OWNER ||
+            '';
         this.repository = config.repository || '';
         if (!this.owner) {
-            throw new Error('Owner is required for Gitea provider');
+            throw new Error('Owner is required for Gitea provider. Either specify the owner input or ensure GITEA_ACTOR/GITHUB_ACTOR/GITHUB_REPOSITORY_OWNER environment variable is set.');
         }
     }
     getAuthHeaders() {
