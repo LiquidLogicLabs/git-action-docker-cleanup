@@ -176,7 +176,7 @@ class CleanupEngine {
      * Filtering phase: Apply all filters
      */
     filterImages(images) {
-        let imagesToDelete = [];
+        const imagesToDelete = [];
         // Apply general filters
         const filtered = this.filter.filterImages(images, images);
         // Apply keep-n-tagged filter
@@ -239,10 +239,6 @@ class CleanupEngine {
         };
         // Check if there are excluded tags - if so, we need to check all tags before deleting manifest
         const hasExcludedTags = this.config.excludeTags && this.config.excludeTags.length > 0;
-        // Build a map of all discovered images by manifest digest to check for excluded tags
-        const allImagesByDigest = new Map();
-        // This will be populated by checking all images that share the same manifest
-        // For now, we'll check during deletion
         for (const image of images) {
             try {
                 // Check if excluded tags exist for this manifest

@@ -44,7 +44,10 @@ async function run(): Promise<void> {
     const validate = core.getBooleanInput('validate');
     const retry = parseInt(core.getInput('retry') || '3', 10);
     const throttle = parseInt(core.getInput('throttle') || '1000', 10);
-    const verbose = core.getBooleanInput('verbose');
+    // Handle verbose input - use getInput with default, then convert to boolean
+    // This ensures it works even if the input isn't provided or is in an unexpected format
+    const verboseInput = core.getInput('verbose') || 'false';
+    const verbose = verboseInput.toLowerCase() === 'true';
 
     // Parse package names
     const packages: string[] = [];

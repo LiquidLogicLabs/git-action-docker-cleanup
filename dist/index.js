@@ -25825,7 +25825,7 @@ class CleanupEngine {
      * Filtering phase: Apply all filters
      */
     filterImages(images) {
-        let imagesToDelete = [];
+        const imagesToDelete = [];
         // Apply general filters
         const filtered = this.filter.filterImages(images, images);
         // Apply keep-n-tagged filter
@@ -25888,10 +25888,6 @@ class CleanupEngine {
         };
         // Check if there are excluded tags - if so, we need to check all tags before deleting manifest
         const hasExcludedTags = this.config.excludeTags && this.config.excludeTags.length > 0;
-        // Build a map of all discovered images by manifest digest to check for excluded tags
-        const allImagesByDigest = new Map();
-        // This will be populated by checking all images that share the same manifest
-        // For now, we'll check during deletion
         for (const image of images) {
             try {
                 // Check if excluded tags exist for this manifest
@@ -26141,7 +26137,7 @@ class ImageFilter {
     /**
      * Remove child images from multi-arch images
      */
-    removeChildImages(images, allImages) {
+    removeChildImages(images, _allImages) {
         const childDigests = new Set();
         // Collect all child digests from multi-arch images
         for (const image of images) {
@@ -26243,7 +26239,6 @@ class ImageFilter {
             return dateB.getTime() - dateA.getTime();
         });
         // Keep N latest
-        const toKeep = sorted.slice(0, this.config.keepNTagged);
         const toDelete = sorted.slice(this.config.keepNTagged);
         return toDelete;
     }
@@ -26533,7 +26528,10 @@ async function run() {
         const validate = core.getBooleanInput('validate');
         const retry = parseInt(core.getInput('retry') || '3', 10);
         const throttle = parseInt(core.getInput('throttle') || '1000', 10);
-        const verbose = core.getBooleanInput('verbose');
+        // Handle verbose input - use getInput with default, then convert to boolean
+        // This ensures it works even if the input isn't provided or is in an unexpected format
+        const verboseInput = core.getInput('verbose') || 'false';
+        const verbose = verboseInput.toLowerCase() === 'true';
         // Parse package names
         const packages = [];
         if (packageInput) {
@@ -26912,7 +26910,7 @@ class DockerCLIProvider {
     }
     normalizeRegistryUrl(url) {
         // Remove protocol and trailing slash
-        let normalized = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        const normalized = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
         return normalized;
     }
     getImageName(packageName, tag) {
@@ -27353,6 +27351,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         let page = 1;
         const pageSize = 100;
         const token = await this.getHubToken();
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
@@ -27430,6 +27429,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         let page = 1;
         const pageSize = 100;
         const tags = [];
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);
@@ -28009,6 +28009,7 @@ class GHCRProvider extends base_1.BaseProvider {
         let page = 1;
         const perPage = 100;
         const ownerApiBase = await this.getOwnerApiBase();
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
             this.logger.debug(`[GHCR] Fetching packages page ${page}`);
@@ -28153,7 +28154,6 @@ class GHCRProvider extends base_1.BaseProvider {
             this.logger.debug(`[GHCR] listTags: No data in response, returning empty array`);
             return [];
         }
-        const tags = [];
         const tagMap = new Map();
         // Collect all tags from all versions
         // For GHCR, we use the tag name as the digest reference since we work with GitHub Package API
@@ -28402,6 +28402,7 @@ class GiteaProvider extends base_1.BaseProvider {
         const packages = [];
         let page = 1;
         const limit = 50;
+        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.giteaApiUrl}/packages/${this.owner}?type=container&page=${page}&limit=${limit}`;
             this.logger.debug(`[Gitea] listPackages: Fetching page ${page} from ${url}`);
@@ -28490,6 +28491,7 @@ class GiteaProvider extends base_1.BaseProvider {
         let page = 1;
         const limit = 50;
         try {
+            // eslint-disable-next-line no-constant-condition
             while (true) {
                 const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
                 this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);

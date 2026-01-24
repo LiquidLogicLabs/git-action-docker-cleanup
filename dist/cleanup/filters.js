@@ -45,7 +45,7 @@ class ImageFilter {
     /**
      * Remove child images from multi-arch images
      */
-    removeChildImages(images, allImages) {
+    removeChildImages(images, _allImages) {
         const childDigests = new Set();
         // Collect all child digests from multi-arch images
         for (const image of images) {
@@ -147,7 +147,6 @@ class ImageFilter {
             return dateB.getTime() - dateA.getTime();
         });
         // Keep N latest
-        const toKeep = sorted.slice(0, this.config.keepNTagged);
         const toDelete = sorted.slice(this.config.keepNTagged);
         return toDelete;
     }

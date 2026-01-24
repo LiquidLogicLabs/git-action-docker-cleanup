@@ -61,7 +61,7 @@ class DockerCLIProvider {
     }
     normalizeRegistryUrl(url) {
         // Remove protocol and trailing slash
-        let normalized = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        const normalized = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
         return normalized;
     }
     getImageName(packageName, tag) {
