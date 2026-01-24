@@ -249,7 +249,7 @@ export class DockerHubProvider extends BaseProvider {
     return tags;
   }
 
-  async deleteTag(packageName: string, tag: string): Promise<void> {
+  async deleteTag(packageName: string, tag: string, _tagsBeingDeleted?: string[]): Promise<void> {
     this.logger.debug(`[DockerHub] Deleting tag: ${tag} from package: ${packageName}`);
     
     if (!this.authenticated) {

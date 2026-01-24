@@ -185,7 +185,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         this.logger.debug(`[DockerHub] Found ${tags.length} total tags via Hub API`);
         return tags;
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, _tagsBeingDeleted) {
         this.logger.debug(`[DockerHub] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();

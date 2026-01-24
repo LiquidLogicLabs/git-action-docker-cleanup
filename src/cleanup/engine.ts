@@ -280,9 +280,11 @@ export class CleanupEngine {
         }
         
         const deletedTagNames: string[] = [];
+        // Collect all tag names being deleted for this image to pass to deleteTag
+        const tagsBeingDeleted = image.tags.map(t => t.name);
         for (const tag of image.tags) {
           try {
-            await this.provider.deleteTag(image.package.name, tag.name);
+            await this.provider.deleteTag(image.package.name, tag.name, tagsBeingDeleted);
             result.deletedTags.push(tag.name);
             deletedTagNames.push(tag.name);
           } catch (error) {

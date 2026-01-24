@@ -205,7 +205,7 @@ export class GenericOCIProvider extends BaseProvider {
     }
   }
 
-  async deleteTag(packageName: string, tag: string): Promise<void> {
+  async deleteTag(packageName: string, tag: string, _tagsBeingDeleted?: string[]): Promise<void> {
     this.logger.debug(`[GenericOCI] Deleting tag: ${tag} from package: ${packageName} (will delete manifest and all tags pointing to it)`);
     if (!this.authenticated) {
       await this.authenticate();

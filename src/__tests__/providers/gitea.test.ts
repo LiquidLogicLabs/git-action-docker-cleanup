@@ -161,6 +161,200 @@ describe('GiteaProvider', () => {
         })
       );
     });
+
+    it('should fall back to OCI Registry API when Package API returns 403 and all tags are being deleted', async () => {
+      // Mock authentication
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { id: 1, login: 'test-owner' },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+        });
+
+      // Mock Package API deletion failure (403)
+      httpClient.delete.mockRejectedValueOnce({
+        message: 'user should have specific permission or be a site admin',
+        statusCode: 403,
+      });
+
+      // Mock getManifest for the tag
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        });
+
+      // Mock listTags to return multiple tags pointing to the same manifest
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { tags: ['v1.0', 'v2.0', 'latest'] },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+        })
+        // Mock getManifest for each tag (all pointing to same digest)
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        })
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        })
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        });
+
+      // Mock OCI Registry API manifest deletion
+      httpClient.delete.mockResolvedValueOnce({
+        data: undefined,
+        status: 202,
+        statusText: 'Accepted',
+        headers: {},
+      });
+
+      // All tags pointing to the manifest are being deleted
+      await provider.deleteTag('test-owner/package1', 'v1.0', ['v1.0', 'v2.0', 'latest']);
+
+      // Should have tried Package API first
+      expect(httpClient.delete).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/packages/test-owner/container/package1/v1.0'),
+        expect.objectContaining({
+          Authorization: expect.stringContaining('test-token'),
+        })
+      );
+
+      // Should have deleted manifest via OCI Registry API
+      expect(httpClient.delete).toHaveBeenCalledWith(
+        expect.stringContaining('/v2/test-owner/package1/manifests/sha256:digest1'),
+        expect.objectContaining({
+          Authorization: expect.stringContaining('Basic'),
+        })
+      );
+    });
+
+    it('should not allow OCI Registry API deletion when Package API returns 403 and not all tags are being deleted', async () => {
+      // Mock authentication
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { id: 1, login: 'test-owner' },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+        });
+
+      // Mock Package API deletion failure (403)
+      httpClient.delete.mockRejectedValueOnce({
+        message: 'user should have specific permission or be a site admin',
+        statusCode: 403,
+      });
+
+      // Mock getManifest for the tag
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        });
+
+      // Mock listTags to return multiple tags pointing to the same manifest
+      httpClient.get
+        .mockResolvedValueOnce({
+          data: { tags: ['v1.0', 'v2.0', 'latest'] },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+        })
+        // Mock getManifest for each tag (all pointing to same digest)
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        })
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        })
+        .mockResolvedValueOnce({
+          data: JSON.stringify({
+            schemaVersion: 2,
+            mediaType: 'application/vnd.docker.distribution.manifest.v2+json',
+            config: { digest: 'sha256:config1', size: 100 },
+            layers: [],
+          }),
+          status: 200,
+          statusText: 'OK',
+          headers: { 'docker-content-digest': 'sha256:digest1' },
+        });
+
+      // Only v1.0 is being deleted, not all tags
+      await expect(
+        provider.deleteTag('test-owner/package1', 'v1.0', ['v1.0'])
+      ).rejects.toThrow('Cannot delete tag v1.0 via OCI Registry API');
+
+      // Should have tried Package API first
+      expect(httpClient.delete).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/packages/test-owner/container/package1/v1.0'),
+        expect.objectContaining({
+          Authorization: expect.stringContaining('test-token'),
+        })
+      );
+
+      // Should NOT have deleted manifest via OCI Registry API
+      expect(httpClient.delete).not.toHaveBeenCalledWith(
+        expect.stringContaining('/v2/test-owner/package1/manifests/sha256:digest1'),
+        expect.anything()
+      );
+    });
   });
 
   describe('supportsFeature', () => {

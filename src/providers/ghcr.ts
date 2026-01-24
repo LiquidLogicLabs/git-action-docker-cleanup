@@ -328,7 +328,7 @@ export class GHCRProvider extends BaseProvider {
     return Array.from(tagMap.values()).map(item => item.tag);
   }
 
-  async deleteTag(packageName: string, tag: string): Promise<void> {
+  async deleteTag(packageName: string, tag: string, _tagsBeingDeleted?: string[]): Promise<void> {
     this.logger.debug(`[GHCR] Deleting tag: ${tag} from package: ${packageName}`);
     if (!this.authenticated) {
       await this.authenticate();

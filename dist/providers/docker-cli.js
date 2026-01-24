@@ -252,7 +252,7 @@ class DockerCLIProvider {
         this.logger.debug(`[DockerCLI] listTags: Completed, returning ${tags.length} tags for ${packageName} from local Docker images`);
         return tags;
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, _tagsBeingDeleted) {
         this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {

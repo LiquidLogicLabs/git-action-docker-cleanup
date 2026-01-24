@@ -58,7 +58,7 @@ export declare abstract class BaseProvider implements IRegistryProvider {
     abstract listPackages(): Promise<Package[]>;
     abstract getPackageManifests(packageName: string): Promise<Manifest[]>;
     abstract listTags(packageName: string): Promise<Tag[]>;
-    abstract deleteTag(packageName: string, tag: string): Promise<void>;
+    abstract deleteTag(packageName: string, tag: string, tagsBeingDeleted?: string[]): Promise<void>;
     abstract getManifest(packageName: string, reference: string): Promise<Manifest>;
     abstract deleteManifest(packageName: string, digest: string): Promise<void>;
     abstract getReferrers(packageName: string, digest: string): Promise<Referrer[]>;

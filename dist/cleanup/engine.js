@@ -252,9 +252,11 @@ class CleanupEngine {
                     this.logger.debug(`Manifest ${image.manifest.digest} has excluded tags - will attempt individual tag deletion but prevent manifest deletion`);
                 }
                 const deletedTagNames = [];
+                // Collect all tag names being deleted for this image to pass to deleteTag
+                const tagsBeingDeleted = image.tags.map(t => t.name);
                 for (const tag of image.tags) {
                     try {
-                        await this.provider.deleteTag(image.package.name, tag.name);
+                        await this.provider.deleteTag(image.package.name, tag.name, tagsBeingDeleted);
                         result.deletedTags.push(tag.name);
                         deletedTagNames.push(tag.name);
                     }

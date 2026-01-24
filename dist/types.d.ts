@@ -101,8 +101,9 @@ export interface IRegistryProvider {
     listTags(packageName: string): Promise<Tag[]>;
     /**
      * Delete a tag
+     * @param tagsBeingDeleted Optional list of all tags being deleted for this package (used to determine if manifest deletion is safe)
      */
-    deleteTag(packageName: string, tag: string): Promise<void>;
+    deleteTag(packageName: string, tag: string, tagsBeingDeleted?: string[]): Promise<void>;
     /**
      * Get manifest by reference (tag or digest)
      */

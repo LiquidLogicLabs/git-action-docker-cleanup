@@ -296,7 +296,7 @@ class GHCRProvider extends base_1.BaseProvider {
         this.logger.debug(`[GHCR] listTags: Completed, returning ${tagMap.size} unique tags`);
         return Array.from(tagMap.values()).map(item => item.tag);
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, _tagsBeingDeleted) {
         this.logger.debug(`[GHCR] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();

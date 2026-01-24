@@ -25,7 +25,7 @@ export declare class GHCRProvider extends BaseProvider {
     private extractPackageName;
     private getPackageVersions;
     listTags(packageName: string): Promise<Tag[]>;
-    deleteTag(packageName: string, tag: string): Promise<void>;
+    deleteTag(packageName: string, tag: string, _tagsBeingDeleted?: string[]): Promise<void>;
     getManifest(packageName: string, reference: string): Promise<Manifest>;
     deleteManifest(packageName: string, digest: string): Promise<void>;
     getReferrers(packageName: string, digest: string): Promise<Referrer[]>;

@@ -272,7 +272,7 @@ export class DockerCLIProvider implements IRegistryProvider {
     return tags;
   }
 
-  async deleteTag(packageName: string, tag: string): Promise<void> {
+  async deleteTag(packageName: string, tag: string, _tagsBeingDeleted?: string[]): Promise<void> {
     this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
     // Authentication is optional for local operations
     if (!this.authenticated) {

@@ -223,7 +223,7 @@ describe('CleanupEngine', () => {
 
       const result = await (engine as any).deleteImages(images);
 
-      expect(mockProvider.deleteTag).toHaveBeenCalledWith('test/pkg', 'v1.0');
+      expect(mockProvider.deleteTag).toHaveBeenCalledWith('test/pkg', 'v1.0', ['v1.0']);
       expect(result.deletedCount).toBeGreaterThanOrEqual(0);
     });
 

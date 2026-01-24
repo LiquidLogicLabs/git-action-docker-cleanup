@@ -256,7 +256,7 @@ class GiteaProvider extends base_1.BaseProvider {
             return [];
         }
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, tagsBeingDeleted) {
         this.logger.debug(`[Gitea] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();
@@ -285,10 +285,20 @@ class GiteaProvider extends base_1.BaseProvider {
                 const tagsForThisManifest = allTags.filter(t => t.digest === manifest.digest);
                 this.logger.debug(`[Gitea] Found ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest}: ${tagsForThisManifest.map(t => t.name).join(', ')}`);
                 if (tagsForThisManifest.length > 1) {
-                    const errorMsg = `Cannot delete tag ${tag} via OCI Registry API: Manifest ${manifest.digest} has ${tagsForThisManifest.length} tags. ` +
-                        `Deleting the manifest would delete all tags. Gitea Package API deletion failed, and OCI Registry API fallback is not safe.`;
-                    this.logger.debug(`[Gitea] ${errorMsg}`);
-                    throw new Error(errorMsg);
+                    // Check if all tags pointing to this manifest are being deleted
+                    const allTagsBeingDeleted = tagsBeingDeleted && tagsForThisManifest.every(t => tagsBeingDeleted.includes(t.name));
+                    if (allTagsBeingDeleted) {
+                        this.logger.debug(`[Gitea] All ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest} are being deleted - safe to delete manifest via OCI Registry API`);
+                        await this.deleteManifest(packageName, manifest.digest);
+                        this.logger.info(`Deleted tag ${tag} (and all other tags via manifest deletion) from package ${packageName}`);
+                        return;
+                    }
+                    else {
+                        const errorMsg = `Cannot delete tag ${tag} via OCI Registry API: Manifest ${manifest.digest} has ${tagsForThisManifest.length} tags. ` +
+                            `Deleting the manifest would delete all tags. Gitea Package API deletion failed, and OCI Registry API fallback is not safe.`;
+                        this.logger.debug(`[Gitea] ${errorMsg}`);
+                        throw new Error(errorMsg);
+                    }
                 }
                 this.logger.debug(`[Gitea] Only one tag points to manifest, safe to delete via OCI Registry API`);
                 await this.deleteManifest(packageName, manifest.digest);

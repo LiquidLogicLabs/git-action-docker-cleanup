@@ -25901,9 +25901,11 @@ class CleanupEngine {
                     this.logger.debug(`Manifest ${image.manifest.digest} has excluded tags - will attempt individual tag deletion but prevent manifest deletion`);
                 }
                 const deletedTagNames = [];
+                // Collect all tag names being deleted for this image to pass to deleteTag
+                const tagsBeingDeleted = image.tags.map(t => t.name);
                 for (const tag of image.tags) {
                     try {
-                        await this.provider.deleteTag(image.package.name, tag.name);
+                        await this.provider.deleteTag(image.package.name, tag.name, tagsBeingDeleted);
                         result.deletedTags.push(tag.name);
                         deletedTagNames.push(tag.name);
                     }
@@ -27104,7 +27106,7 @@ class DockerCLIProvider {
         this.logger.debug(`[DockerCLI] listTags: Completed, returning ${tags.length} tags for ${packageName} from local Docker images`);
         return tags;
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, _tagsBeingDeleted) {
         this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
@@ -27459,7 +27461,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         this.logger.debug(`[DockerHub] Found ${tags.length} total tags via Hub API`);
         return tags;
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, _tagsBeingDeleted) {
         this.logger.debug(`[DockerHub] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();
@@ -27766,7 +27768,7 @@ class GenericOCIProvider extends base_1.BaseProvider {
             return [];
         }
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, _tagsBeingDeleted) {
         this.logger.debug(`[GenericOCI] Deleting tag: ${tag} from package: ${packageName} (will delete manifest and all tags pointing to it)`);
         if (!this.authenticated) {
             await this.authenticate();
@@ -28188,7 +28190,7 @@ class GHCRProvider extends base_1.BaseProvider {
         this.logger.debug(`[GHCR] listTags: Completed, returning ${tagMap.size} unique tags`);
         return Array.from(tagMap.values()).map(item => item.tag);
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, _tagsBeingDeleted) {
         this.logger.debug(`[GHCR] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();
@@ -28585,7 +28587,7 @@ class GiteaProvider extends base_1.BaseProvider {
             return [];
         }
     }
-    async deleteTag(packageName, tag) {
+    async deleteTag(packageName, tag, tagsBeingDeleted) {
         this.logger.debug(`[Gitea] Deleting tag: ${tag} from package: ${packageName}`);
         if (!this.authenticated) {
             await this.authenticate();
@@ -28614,10 +28616,20 @@ class GiteaProvider extends base_1.BaseProvider {
                 const tagsForThisManifest = allTags.filter(t => t.digest === manifest.digest);
                 this.logger.debug(`[Gitea] Found ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest}: ${tagsForThisManifest.map(t => t.name).join(', ')}`);
                 if (tagsForThisManifest.length > 1) {
-                    const errorMsg = `Cannot delete tag ${tag} via OCI Registry API: Manifest ${manifest.digest} has ${tagsForThisManifest.length} tags. ` +
-                        `Deleting the manifest would delete all tags. Gitea Package API deletion failed, and OCI Registry API fallback is not safe.`;
-                    this.logger.debug(`[Gitea] ${errorMsg}`);
-                    throw new Error(errorMsg);
+                    // Check if all tags pointing to this manifest are being deleted
+                    const allTagsBeingDeleted = tagsBeingDeleted && tagsForThisManifest.every(t => tagsBeingDeleted.includes(t.name));
+                    if (allTagsBeingDeleted) {
+                        this.logger.debug(`[Gitea] All ${tagsForThisManifest.length} tags pointing to manifest ${manifest.digest} are being deleted - safe to delete manifest via OCI Registry API`);
+                        await this.deleteManifest(packageName, manifest.digest);
+                        this.logger.info(`Deleted tag ${tag} (and all other tags via manifest deletion) from package ${packageName}`);
+                        return;
+                    }
+                    else {
+                        const errorMsg = `Cannot delete tag ${tag} via OCI Registry API: Manifest ${manifest.digest} has ${tagsForThisManifest.length} tags. ` +
+                            `Deleting the manifest would delete all tags. Gitea Package API deletion failed, and OCI Registry API fallback is not safe.`;
+                        this.logger.debug(`[Gitea] ${errorMsg}`);
+                        throw new Error(errorMsg);
+                    }
                 }
                 this.logger.debug(`[Gitea] Only one tag points to manifest, safe to delete via OCI Registry API`);
                 await this.deleteManifest(packageName, manifest.digest);
