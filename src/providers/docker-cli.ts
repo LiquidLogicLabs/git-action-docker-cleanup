@@ -96,7 +96,7 @@ export class DockerCLIProvider implements IRegistryProvider {
       if (line.trim()) {
         try {
           results.push(JSON.parse(line) as T);
-        } catch (error) {
+        } catch {
           this.logger.debug(`Failed to parse JSON line: ${line}`);
         }
       }

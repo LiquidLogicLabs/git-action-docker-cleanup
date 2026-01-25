@@ -110,7 +110,7 @@ class DockerCLIProvider {
                 try {
                     results.push(JSON.parse(line));
                 }
-                catch (error) {
+                catch {
                     this.logger.debug(`Failed to parse JSON line: ${line}`);
                 }
             }

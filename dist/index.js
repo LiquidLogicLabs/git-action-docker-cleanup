@@ -26052,7 +26052,7 @@ class CleanupEngine {
                                 return false; // Excluded tag exists, don't delete manifest
                             }
                         }
-                        catch (error) {
+                        catch {
                             // If we can't get manifest, assume it might be excluded and don't delete
                             this.logger.debug(`Could not get manifest for excluded tag ${tag.name}, will not delete manifest`);
                             return false;
@@ -26964,7 +26964,7 @@ class DockerCLIProvider {
                 try {
                     results.push(JSON.parse(line));
                 }
-                catch (error) {
+                catch {
                     this.logger.debug(`Failed to parse JSON line: ${line}`);
                 }
             }
