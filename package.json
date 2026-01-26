@@ -4,6 +4,7 @@
   "description": "Multi-registry container cleanup action for GHCR, Gitea, Docker Hub, and OCI-compliant registries",
   "main": "dist/index.js",
   "scripts": {
+    "prepare": "husky install",
     "build": "tsc && ncc build src/index.ts -o dist --source-map --license licenses.txt",
     "package": "npm run build",
     "test": "jest",
@@ -12,7 +13,7 @@
     "test:e2e": "jest --testPathPattern=e2e --testTimeout=30000",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint src/**/*.ts",
+    "lint": "eslint src/**/*.ts --no-warn-ignored",
     "format": "prettier --write \"src/**/*.ts\"",
     "test:act": "act workflow_dispatch -W .github/workflows/test.yml --eventpath .github/workflows/.act/event-workflow_call.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars",
     "test:act:verbose": "act workflow_dispatch -W .github/workflows/test.yml --eventpath .github/workflows/.act/event-workflow_call.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars -v",
@@ -45,6 +46,7 @@
     "eslint": "^9.39.2",
     "jest": "^29.7.0",
     "prettier": "^3.6.2",
+    "husky": "^9.1.7",
     "ts-jest": "^29.1.2",
     "typescript": "^5.9.3"
   }

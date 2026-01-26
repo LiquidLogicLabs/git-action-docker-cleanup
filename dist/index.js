@@ -27356,7 +27356,6 @@ class DockerHubProvider extends base_1.BaseProvider {
         let page = 1;
         const pageSize = 100;
         const token = await this.getHubToken();
-        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
@@ -27434,7 +27433,6 @@ class DockerHubProvider extends base_1.BaseProvider {
         let page = 1;
         const pageSize = 100;
         const tags = [];
-        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);
@@ -28016,7 +28014,6 @@ class GHCRProvider extends base_1.BaseProvider {
         let page = 1;
         const perPage = 100;
         const ownerApiBase = await this.getOwnerApiBase();
-        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
             this.logger.debug(`[GHCR] Fetching packages page ${page}`);
@@ -28415,7 +28412,6 @@ class GiteaProvider extends base_1.BaseProvider {
         const packages = [];
         let page = 1;
         const limit = 50;
-        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.giteaApiUrl}/packages/${this.owner}?type=container&page=${page}&limit=${limit}`;
             this.logger.debug(`[Gitea] listPackages: Fetching page ${page} from ${url}`);
@@ -28504,7 +28500,6 @@ class GiteaProvider extends base_1.BaseProvider {
         let page = 1;
         const limit = 50;
         try {
-            // eslint-disable-next-line no-constant-condition
             while (true) {
                 const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
                 this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);

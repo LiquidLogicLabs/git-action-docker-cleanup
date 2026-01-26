@@ -110,7 +110,6 @@ export class DockerHubProvider extends BaseProvider {
     const pageSize = 100;
     const token = await this.getHubToken();
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
       this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
@@ -210,7 +209,6 @@ export class DockerHubProvider extends BaseProvider {
     const pageSize = 100;
     const tags: Tag[] = [];
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
       this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);

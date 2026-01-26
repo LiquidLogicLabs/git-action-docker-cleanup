@@ -17,7 +17,8 @@ This document outlines best practices for creating GitHub/Gitea Actions based on
 - `README.md` - Comprehensive documentation with badges and examples
 - `.gitignore` - Organized by category (dependencies, build outputs, IDE, OS files, etc.)
 - `.devcontainer/` - Dev container configuration (recommended for consistent development environment)
-- `.eslintrc.json` - ESLint configuration with ignore patterns (not CLI flags)
+- `.eslintrc.json` or `eslint.config.mjs` - ESLint configuration (use `eslint.config.mjs` for ESLint v9+ flat config, `.eslintrc.json` for legacy)
+- `.husky/` - Git hooks directory (for pre-commit lint checks)
 
 ### Directory Structure
 
@@ -29,7 +30,10 @@ action-name/
 ├── CHANGELOG.md            # Keep a Changelog format
 ├── README.md               # Documentation with badges
 ├── .gitignore              # Organized ignore patterns
-├── .eslintrc.json          # ESLint configuration
+├── .eslintrc.json          # ESLint configuration (legacy) OR
+├── eslint.config.mjs       # ESLint v9+ flat configuration
+├── .husky/                 # Git hooks (Husky)
+│   └── pre-commit         # Pre-commit hook (runs lint)
 ├── .devcontainer/          # Dev container configuration
 │   ├── devcontainer.json  # Container definition
 │   └── README.md          # Dev container usage instructions
@@ -163,12 +167,13 @@ branding:
 ```json
 {
   "scripts": {
+    "prepare": "husky install",
     "build": "tsc && ncc build src/index.ts -o dist --source-map --license licenses.txt",
     "package": "npm run build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint src/**/*.ts",
+    "lint": "eslint src/**/*.ts --no-warn-ignored",
     "format": "prettier --write \"src/**/*.ts\""
   }
 }
@@ -900,21 +905,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Linting
 
 - Use ESLint with TypeScript rules
-- Configure in `.eslintrc.json`
-- **Ignore patterns should be in `.eslintrc.json` (not CLI flags)**
-  ```json
-  {
-    "ignorePatterns": ["dist/**", "node_modules/**", "*.js", "**/__tests__/**", "**/*.test.ts"]
-  }
-  ```
-- Keep lint command simple: `"lint": "eslint src/**/*.ts"`
+- **ESLint Configuration Options:**
+  - **ESLint v9+ (Recommended)**: Use `eslint.config.mjs` with flat config format
+    - Requires `globals` package as dev dependency for `globals` import
+    - Example: See `npm-package-git-platfom-detector/eslint.config.mjs`
+  - **ESLint v8 (Legacy)**: Use `.eslintrc.json` with traditional config
+    - **Ignore patterns should be in `.eslintrc.json` (not CLI flags)**
+      ```json
+      {
+        "ignorePatterns": ["dist/**", "node_modules/**", "*.js", "**/__tests__/**", "**/*.test.ts"]
+      }
+      ```
+- Lint command should include `--no-warn-ignored` to suppress warnings for ignored test files: `"lint": "eslint src/**/*.ts --no-warn-ignored"`
 - Run `npm run lint` in CI
+- **Pre-commit hooks**: Use Husky to run lint automatically on commit (see "Git Hooks" section below)
 
 ### Formatting
 
 - Use Prettier for consistent formatting
 - Configure in `.prettierrc.json`
 - Format before committing
+
+### Git Hooks (Pre-commit Linting)
+
+- **Use Husky** to automatically run lint checks before commits
+- **Setup:**
+  1. Add `husky` to `devDependencies`: `"husky": "^9.1.7"`
+  2. Add `prepare` script to `package.json`: `"prepare": "husky install"`
+  3. Create `.husky/pre-commit` file:
+     ```bash
+     #!/bin/sh
+     . "$(dirname "$0")/_/husky.sh"
+     
+     npm run lint
+     ```
+  4. Make hook executable: `chmod +x .husky/pre-commit`
+- **Benefits:**
+  - Catches lint errors before commit
+  - Ensures consistent code quality across team
+  - Prevents broken code from being committed
+- **Note**: Husky automatically installs hooks when `npm install` runs (via `prepare` script)
 
 ### Testing
 

@@ -122,7 +122,6 @@ class GHCRProvider extends base_1.BaseProvider {
         let page = 1;
         const perPage = 100;
         const ownerApiBase = await this.getOwnerApiBase();
-        // eslint-disable-next-line no-constant-condition
         while (true) {
             const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
             this.logger.debug(`[GHCR] Fetching packages page ${page}`);
