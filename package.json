@@ -1,6 +1,6 @@
 {
   "name": "git-action-docker-cleanup",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Multi-registry container cleanup action for GHCR, Gitea, Docker Hub, and OCI-compliant registries",
   "main": "dist/index.js",
   "scripts": {
