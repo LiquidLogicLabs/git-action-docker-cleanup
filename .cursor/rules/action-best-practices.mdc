@@ -524,6 +524,15 @@ Notes:
 
 - Secrets do **not** automatically flow into reusable workflows. If the called workflow uses `secrets.*` (e.g., `NPM_REGISTRY_TOKEN` for a private registry), the caller must pass secrets via `secrets: inherit` or by mapping only the required secrets.
 - `env:` from the caller job does **not** get “passed” into a reusable workflow job; use `workflow_call` inputs (`with:`) and/or repository `vars` to pass non-secret configuration.
+- Concurrency + reusable workflows: GitHub can cancel runs with an annotation like “deadlock was detected for concurrency group … between a top level workflow and 'test'” if the caller and callee end up sharing the same concurrency group. For reusable workflows, prefer an explicit group prefix (don’t rely on `github.workflow`), or omit `concurrency` in the callee and let the entry workflow own concurrency.
+
+Example (reusable `test.yml`):
+
+```yaml
+concurrency:
+  group: Test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+```
 
 ### 8.4 Node setup and caching
 
