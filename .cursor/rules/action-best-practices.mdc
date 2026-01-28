@@ -540,7 +540,7 @@ Recommended:
 
 - Use `actions/setup-node@v4` and enable `cache: npm`.
 - Use `npm ci` in CI (deterministic installs).
-- If you use a private registry, write `.npmrc` in the workflow from a token secret; never commit it.
+- If you use a private registry, commit only a tokenless `.npmrc` (registry + `${NPM_REGISTRY_TOKEN}` placeholder) or generate it at runtime; never commit real tokens, and avoid mutating a tracked `.npmrc` during CI/release (prefer exporting `NPM_REGISTRY_TOKEN` via `env`).
 
 ### 8.5 Concurrency
 
@@ -555,7 +555,7 @@ Recommended patterns:
 
 ```yaml
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 ```
 
