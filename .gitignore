@@ -16,10 +16,10 @@ pnpm-debug.log*
 .env
 .env.local
 
-# Act configuration (keep examples, ignore actual files)
-.act.env
-.act.secrets
-.act.vars
+# act local testing files
+.act.env.local
+.act.vars.local
+.act.secrets.local
 
 # IDE and editor files
 .idea/
@@ -37,3 +37,8 @@ coverage/
 # AI Tools
 .bmad-core/
 .github/chatmodes/
+# Local dev (act)
+.env.*
+.secrets
+.secrets.*
+.actrc.local

@@ -2,12 +2,18 @@ name: CI
 
 on:
   push:
+    paths-ignore: ['**/*.md']
     branches: ['**']
     tags-ignore: ['**']
   pull_request:
+    paths-ignore: ['**/*.md']
     branches: ['**']
   workflow_call:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -45,3 +51,4 @@ jobs:
   test:
     needs: lint
     uses: ./.github/workflows/test.yml
+    secrets: inherit

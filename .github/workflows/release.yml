@@ -11,6 +11,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: read
@@ -57,6 +61,14 @@ jobs:
 
       - name: Build and package action
         run: npm run package
+
+      - name: Verify packaged output is committed
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Working tree not clean after packaging. Run 'npm run package' and commit dist/."
+            git status --porcelain
+            exit 1
+          fi
 
       - name: Generate release notes
         id: release_notes
