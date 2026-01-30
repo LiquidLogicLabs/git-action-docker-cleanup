@@ -50,7 +50,10 @@ async function run(): Promise<void> {
     const validate = core.getBooleanInput('validate');
     const retry = parseInt(core.getInput('retry') || '3', 10);
     const throttle = parseInt(core.getInput('throttle') || '1000', 10);
-    const verbose = core.getBooleanInput('verbose');
+    const verboseInput = core.getBooleanInput('verbose');
+    const envStepDebug = (process.env.ACTIONS_STEP_DEBUG || '').toLowerCase();
+    const stepDebugEnabled = core.isDebug() || envStepDebug === 'true' || envStepDebug === '1';
+    const verbose = verboseInput || stepDebugEnabled;
 
     // Parse package names
     const packages: string[] = [];
