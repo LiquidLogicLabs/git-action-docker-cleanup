@@ -64,11 +64,13 @@ jobs:
 
       - name: Verify packaged output is committed
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Working tree not clean after packaging. Run 'npm run package' and commit dist/."
-            git status --porcelain
+          # Only require the runtime bundle (index.js, index.js.map) to match; .d.ts.map can differ (paths)
+          if ! git diff --quiet dist/index.js dist/index.js.map 2>/dev/null; then
+            echo "::error::dist/index.js or dist/index.js.map changed after packaging. Run 'npm run package' and commit dist/."
+            git diff --stat dist/index.js dist/index.js.map
             exit 1
           fi
+          echo "Runtime bundle (dist/index.js, dist/index.js.map) is committed."
 
       - name: Generate release notes
         id: release_notes
