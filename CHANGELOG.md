@@ -1,11 +1,13 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### [1.0.3](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v1.0.2...v1.0.3) (2026-01-30)
 
-## [Unreleased]
+
+### Bug Fixes
+
+* **release:** verify only runtime bundle (index.js), allow .d.ts.map drift ([62c1262](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/62c1262a1a1a5ddc454dbb23a58fd69e9a74659d))
 
 ## [1.0.0] - TBD
 
