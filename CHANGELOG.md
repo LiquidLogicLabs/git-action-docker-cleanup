@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v1.0.5...v1.1.0) (2026-02-07)
+
+
+### Features
+
+* align inputs and add TLS bypass option ([c70f571](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/c70f5717201cb4dee1e4645bc32c9d139126f988))
+
 ### [1.0.5](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v1.0.4...v1.0.5) (2026-01-30)
 
 ### [1.0.4](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v1.0.3...v1.0.4) (2026-01-30)
