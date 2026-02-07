@@ -1,3 +1,4 @@
+import { Agent } from 'undici';
 import { Logger } from '../logger';
 import { HttpClientOptions, RegistryApiResponse, RegistryError } from '../types';
 
@@ -10,6 +11,7 @@ export class HttpClient {
   private readonly throttle: number;
   private readonly timeout: number;
   private readonly defaultHeaders: Record<string, string>;
+  private readonly dispatcher?: Agent;
 
   constructor(logger: Logger, options: HttpClientOptions = {}) {
     this.logger = logger;
@@ -17,6 +19,9 @@ export class HttpClient {
     this.throttle = options.throttle ?? 1000;
     this.timeout = options.timeout ?? 30000;
     this.defaultHeaders = options.headers ?? {};
+    if (options.skipCertificateCheck) {
+      this.dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
+    }
   }
 
   /**
@@ -42,6 +47,9 @@ export class HttpClient {
       ...options,
       headers,
     };
+    if (this.dispatcher) {
+      (requestOptions as { dispatcher?: Agent }).dispatcher = this.dispatcher;
+    }
 
     let lastError: Error | null = null;
 

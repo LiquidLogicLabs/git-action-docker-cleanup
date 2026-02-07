@@ -1,113 +1,29 @@
 import * as core from '@actions/core';
+import { getInputs } from './config';
 import { Logger } from './logger';
 import { HttpClient } from './utils/api';
 import { createProvider } from './providers/factory';
 import { CleanupEngine } from './cleanup/engine';
-import {
-  ProviderConfig,
-  CleanupConfig,
-  RegistryType,
-} from './types';
-import {
-  validateProviderConfig,
-  validateCleanupConfig,
-  validateRegistryType,
-} from './utils/validation';
 
 /**
  * Main entry point for the action
  */
 async function run(): Promise<void> {
   try {
-    // Parse inputs
-    const registryType = validateRegistryType(core.getInput('registry-type', { required: true }));
-    const registryUrl = core.getInput('registry-url');
-    const registryUsername = core.getInput('registry-username');
-    const registryPassword = core.getInput('registry-password');
-    const token = core.getInput('token');
-    // Default owner to current actor if not specified
-    // Try GITEA_ACTOR first (Gitea Actions), then GITHUB_ACTOR (GitHub Actions), then GITHUB_REPOSITORY_OWNER
-    const owner = core.getInput('owner') || 
-                  process.env.GITEA_ACTOR || 
-                  process.env.GITHUB_ACTOR || 
-                  process.env.GITHUB_REPOSITORY_OWNER || 
-                  '';
-    const repository = core.getInput('repository');
-    const packageInput = core.getInput('package');
-    const packagesInput = core.getInput('packages');
-    const expandPackages = core.getBooleanInput('expand-packages');
-    const useRegex = core.getBooleanInput('use-regex');
-    const dryRun = core.getBooleanInput('dry-run');
-    const keepNTagged = core.getInput('keep-n-tagged') ? parseInt(core.getInput('keep-n-tagged'), 10) : undefined;
-    const keepNUntagged = core.getInput('keep-n-untagged') ? parseInt(core.getInput('keep-n-untagged'), 10) : undefined;
-    const deleteUntagged = core.getBooleanInput('delete-untagged');
-    const deleteTags = core.getInput('delete-tags') ? core.getInput('delete-tags').split(',').map(t => t.trim()) : undefined;
-    const excludeTags = core.getInput('exclude-tags') ? core.getInput('exclude-tags').split(',').map(t => t.trim()) : undefined;
-    const olderThan = core.getInput('older-than');
-    const deleteGhostImages = core.getBooleanInput('delete-ghost-images');
-    const deletePartialImages = core.getBooleanInput('delete-partial-images');
-    const deleteOrphanedImages = core.getBooleanInput('delete-orphaned-images');
-    const validate = core.getBooleanInput('validate');
-    const retry = parseInt(core.getInput('retry') || '3', 10);
-    const throttle = parseInt(core.getInput('throttle') || '1000', 10);
-    const verboseInput = core.getBooleanInput('verbose');
-    const envStepDebug = (process.env.ACTIONS_STEP_DEBUG || '').toLowerCase();
-    const stepDebugEnabled = core.isDebug() || envStepDebug === 'true' || envStepDebug === '1';
-    const verbose = verboseInput || stepDebugEnabled;
-
-    // Parse package names
-    const packages: string[] = [];
-    if (packageInput) {
-      packages.push(packageInput);
-    }
-    if (packagesInput) {
-      packages.push(...packagesInput.split(',').map(p => p.trim()));
-    }
-
-    // Build configuration
-    const providerConfig: ProviderConfig = {
-      registryType: registryType as RegistryType,
-      registryUrl,
-      token,
-      username: registryUsername,
-      password: registryPassword,
-      owner,
-      repository,
-      packages: packages.length > 0 ? packages : undefined,
-      expandPackages,
-      useRegex,
-    };
-
-    const cleanupConfig: CleanupConfig = {
-      dryRun,
-      keepNTagged,
-      keepNUntagged,
-      deleteUntagged,
-      deleteTags,
-      excludeTags,
-      olderThan,
-      deleteGhostImages,
-      deletePartialImages,
-      deleteOrphanedImages,
-      validate,
-      retry,
-      throttle,
-      verbose,
-      expandPackages,
-      useRegex,
-    };
-
-    // Validate configuration
-    validateProviderConfig(providerConfig);
-    validateCleanupConfig(cleanupConfig);
+    const { providerConfig, cleanupConfig, packages, skipCertificateCheck } = getInputs();
 
     // Initialize logger
-    const logger = new Logger(verbose);
+    const logger = new Logger(cleanupConfig.verbose);
+
+    if (skipCertificateCheck) {
+      logger.warning('TLS certificate verification is disabled. This is a security risk and should only be used with trusted endpoints.');
+    }
 
     // Initialize HTTP client
     const httpClient = new HttpClient(logger, {
-      retry,
-      throttle,
+      retry: cleanupConfig.retry,
+      throttle: cleanupConfig.throttle,
+      skipCertificateCheck,
     });
 
     // Create provider
@@ -124,10 +40,10 @@ async function run(): Promise<void> {
     const result = await engine.run(packages);
 
     // Set outputs
-    core.setOutput('deleted-count', result.deletedCount);
-    core.setOutput('kept-count', result.keptCount);
-    core.setOutput('deleted-tags', result.deletedTags.join(','));
-    core.setOutput('kept-tags', result.keptTags.join(','));
+    core.setOutput('deletedCount', result.deletedCount);
+    core.setOutput('keptCount', result.keptCount);
+    core.setOutput('deletedTags', result.deletedTags.join(','));
+    core.setOutput('keptTags', result.keptTags.join(','));
 
     // Log results
     logger.info(`Cleanup complete: ${result.deletedCount} deleted, ${result.keptCount} kept`);
@@ -139,7 +55,7 @@ async function run(): Promise<void> {
       }
     }
 
-    if (result.errors.length > 0 && !dryRun) {
+    if (result.errors.length > 0 && !cleanupConfig.dryRun) {
       core.setFailed(`Cleanup completed with ${result.errors.length} errors`);
     }
   } catch (error) {
