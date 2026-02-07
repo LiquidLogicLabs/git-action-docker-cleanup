@@ -1,3 +1,13 @@
 #!/bin/sh
+set -e
 
-npm run lint
+changed_files=$(git diff --cached --name-only --diff-filter=ACMR)
+if echo "$changed_files" | grep -E '^(src/|package(-lock)?\.json|tsconfig.*\.json)' >/dev/null; then
+  echo "Detected source/config changes; running lint..."
+  npm run lint
+  echo "Rebuilding dist..."
+  npm run package
+  git add dist/
+else
+  echo "No source/config changes detected; skipping lint and dist rebuild."
+fi
