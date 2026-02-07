@@ -9,6 +9,7 @@ export declare class HttpClient {
     private readonly throttle;
     private readonly timeout;
     private readonly defaultHeaders;
+    private readonly dispatcher?;
     constructor(logger: Logger, options?: HttpClientOptions);
     /**
      * Sleep for specified milliseconds

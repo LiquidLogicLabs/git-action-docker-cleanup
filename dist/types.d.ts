@@ -179,6 +179,7 @@ export interface HttpClientOptions {
     throttle?: number;
     timeout?: number;
     headers?: Record<string, string>;
+    skipCertificateCheck?: boolean;
 }
 /**
  * Registry API response types

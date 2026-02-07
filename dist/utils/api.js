@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HttpClient = void 0;
+const undici_1 = require("undici");
 const types_1 = require("../types");
 /**
  * HTTP client with retry, throttle, and error handling
@@ -11,12 +12,16 @@ class HttpClient {
     throttle;
     timeout;
     defaultHeaders;
+    dispatcher;
     constructor(logger, options = {}) {
         this.logger = logger;
         this.retry = options.retry ?? 3;
         this.throttle = options.throttle ?? 1000;
         this.timeout = options.timeout ?? 30000;
         this.defaultHeaders = options.headers ?? {};
+        if (options.skipCertificateCheck) {
+            this.dispatcher = new undici_1.Agent({ connect: { rejectUnauthorized: false } });
+        }
     }
     /**
      * Sleep for specified milliseconds
@@ -36,6 +41,9 @@ class HttpClient {
             ...options,
             headers,
         };
+        if (this.dispatcher) {
+            requestOptions.dispatcher = this.dispatcher;
+        }
         let lastError = null;
         for (let attempt = 0; attempt <= this.retry; attempt++) {
             try {
