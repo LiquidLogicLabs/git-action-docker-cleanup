@@ -3,16 +3,16 @@ description: 'Delete untagged/tagged images from container registries. Supports 
 author: 'LiquidLogicLabs'
 inputs:
   # Registry configuration
-  registryType:
+  registry-type:
     description: 'Registry type: ghcr, gitea, docker-hub, docker, oci, or auto'
     required: true
-  registryUrl:
+  registry-url:
     description: 'Registry base URL (required for gitea, docker, and auto; optional for ghcr/docker-hub)'
     required: false
-  registryUsername:
+  registry-username:
     description: 'Registry username (optional, for Docker Hub and docker CLI provider)'
     required: false
-  registryPassword:
+  registry-password:
     description: 'Registry password (optional, for Docker Hub and docker CLI provider, alternative to token)'
     required: false
   
@@ -35,48 +35,48 @@ inputs:
   packages:
     description: 'Comma-separated list of packages to cleanup'
     required: false
-  expandPackages:
+  expand-packages:
     description: 'Enable wildcard or regular expression support on the package(s) option'
     required: false
     default: 'false'
-  useRegex:
+  use-regex:
     description: 'Use regular expression for package matching'
     required: false
     default: 'false'
   
   # Cleanup options
-  dryRun:
+  dry-run:
     description: 'Simulate cleanup without deleting'
     required: false
     default: 'false'
-  keepNTagged:
+  keep-n-tagged:
     description: 'Keep N latest tagged images'
     required: false
-  keepNUntagged:
+  keep-n-untagged:
     description: 'Keep N latest untagged images'
     required: false
-  deleteUntagged:
+  delete-untagged:
     description: 'Delete all untagged images'
     required: false
     default: 'false'
-  deleteTags:
+  delete-tags:
     description: 'Delete specific tags (wildcard/regex supported)'
     required: false
-  excludeTags:
+  exclude-tags:
     description: 'Exclude tags from deletion'
     required: false
-  olderThan:
+  older-than:
     description: 'Delete images older than specified time (e.g., "30d", "2w", "1m")'
     required: false
-  deleteGhostImages:
+  delete-ghost-images:
     description: 'Delete ghost images'
     required: false
     default: 'false'
-  deletePartialImages:
+  delete-partial-images:
     description: 'Delete partial multi-arch images'
     required: false
     default: 'false'
-  deleteOrphanedImages:
+  delete-orphaned-images:
     description: 'Delete orphaned images'
     required: false
     default: 'false'
@@ -95,7 +95,7 @@ inputs:
     required: false
     default: '1000'
 
-  skipCertificateCheck:
+  skip-certificate-check:
     description: 'Skip TLS certificate verification for registry API calls'
     required: false
     default: 'false'
@@ -107,13 +107,13 @@ inputs:
     default: 'false'
 
 outputs:
-  deletedCount:
+  deleted-count:
     description: 'Number of images/packages deleted'
-  keptCount:
+  kept-count:
     description: 'Number of images/packages kept'
-  deletedTags:
+  deleted-tags:
     description: 'List of deleted tags (comma-separated)'
-  keptTags:
+  kept-tags:
     description: 'List of kept tags (comma-separated)'
 
 runs:

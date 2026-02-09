@@ -11,28 +11,28 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 **This action permanently deletes tags and images from your registry. Deletions cannot be undone.**
 
 **Before running in production:**
-1. **Always test with `dryRun: true` first** to preview what will be deleted
+1. **Always test with `dry-run: true` first** to preview what will be deleted
 2. Review the output carefully to ensure only intended images/tags are marked for deletion
-3. Use `excludeTags` to protect important tags (e.g., `latest`, `dev`, `main`)
+3. Use `exclude-tags` to protect important tags (e.g., `latest`, `dev`, `main`)
 4. Start with a small scope (single package) before cleaning up multiple packages
-5. Verify your filters and patterns work as expected in dryRun mode
+5. Verify your filters and patterns work as expected in dry-run mode
 
 **Example workflow:**
 ```yaml
-# Step 1: Test with dryRun
+# Step 1: Test with dry-run
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: ghcr
+    registry-type: ghcr
     package: my-package
-    dryRun: true  # ← Always start here!
+    dry-run: true  # ← Always start here!
 
-# Step 2: After reviewing dryRun output, remove dryRun for actual deletion
+# Step 2: After reviewing dry-run output, remove dry-run for actual deletion
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: ghcr
+    registry-type: ghcr
     package: my-package
-    excludeTags: latest,dev  # Protect important tags
-    # dryRun: false (default)
+    exclude-tags: latest,dev  # Protect important tags
+    # dry-run: false (default)
 ```
 
 ## Features
@@ -53,9 +53,9 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ```yaml
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: ghcr
+    registry-type: ghcr
     package: my-package
-    dryRun: true
+    dry-run: true
 ```
 
 ### Gitea (Self-Hosted)
@@ -63,11 +63,11 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ```yaml
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: gitea
-    registryUrl: https://gitea.example.com
+    registry-type: gitea
+    registry-url: https://gitea.example.com
     token: ${{ secrets.GITEA_TOKEN }}
     package: my-package
-    dryRun: true
+    dry-run: true
 ```
 
 ### Docker Hub
@@ -75,11 +75,11 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ```yaml
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: docker-hub
-    registryUsername: ${{ secrets.DOCKER_USERNAME }}
-    registryPassword: ${{ secrets.DOCKER_PASSWORD }}
+    registry-type: docker-hub
+    registry-username: ${{ secrets.DOCKER_USERNAME }}
+    registry-password: ${{ secrets.DOCKER_PASSWORD }}
     package: my-org/my-package
-    dryRun: true
+    dry-run: true
 ```
 
 ### Generic OCI Registry (Harbor, Quay.io, ACR, etc.)
@@ -87,11 +87,11 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ```yaml
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: oci
-    registryUrl: registry.example.com
+    registry-type: oci
+    registry-url: registry.example.com
     token: ${{ secrets.REGISTRY_TOKEN }}
     package: my-org/my-package
-    dryRun: true
+    dry-run: true
 ```
 
 ### Auto-Detection
@@ -99,10 +99,10 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ```yaml
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: auto
-    registryUrl: ghcr.io
+    registry-type: auto
+    registry-url: ghcr.io
     package: my-package
-    dryRun: true
+    dry-run: true
 ```
 
 ### Keep N Latest Tagged Images
@@ -110,11 +110,11 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ```yaml
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: ghcr
+    registry-type: ghcr
     package: my-package
-    dryRun: true  # Test first!
-    keepNTagged: 10
-    excludeTags: dev,latest
+    dry-run: true  # Test first!
+    keep-n-tagged: 10
+    exclude-tags: dev,latest
 ```
 
 ### Delete Untagged Images
@@ -122,11 +122,11 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ```yaml
 - uses: LiquidLogicLabs/git-action-docker-cleanup@v1
   with:
-    registryType: ghcr
+    registry-type: ghcr
     package: my-package
-    dryRun: true  # Test first!
-    deleteUntagged: true
-    keepNUntagged: 5
+    dry-run: true  # Test first!
+    delete-untagged: true
+    keep-n-untagged: 5
 ```
 
 ## Inputs
@@ -135,10 +135,10 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `registryType` | Registry type: `ghcr`, `gitea`, `docker-hub`, `docker`, or `auto` | Yes | - |
-| `registryUrl` | Registry base URL (required for gitea, docker, and auto) | No | - |
-| `registryUsername` | Registry username (for Docker Hub and docker CLI) | No | - |
-| `registryPassword` | Registry password (for Docker Hub and docker CLI) | No | - |
+| `registry-type` | Registry type: `ghcr`, `gitea`, `docker-hub`, `docker`, or `auto` | Yes | - |
+| `registry-url` | Registry base URL (required for gitea, docker, and auto) | No | - |
+| `registry-username` | Registry username (for Docker Hub and docker CLI) | No | - |
+| `registry-password` | Registry password (for Docker Hub and docker CLI) | No | - |
 | `token` | Authentication token | No | `${{ github.token }}` |
 
 ### Package Configuration
@@ -149,23 +149,23 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 | `repository` | Repository name | No | Current repo name |
 | `package` | Package name to clean | No | - |
 | `packages` | Comma-separated list of packages | No | - |
-| `expandPackages` | Enable wildcard/regex support | No | `false` |
-| `useRegex` | Use regex for package matching | No | `false` |
+| `expand-packages` | Enable wildcard/regex support | No | `false` |
+| `use-regex` | Use regex for package matching | No | `false` |
 
 ### Cleanup Options
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `dryRun` | Simulate cleanup without deleting | No | `false` |
-| `keepNTagged` | Keep N latest tagged images | No | - |
-| `keepNUntagged` | Keep N latest untagged images | No | - |
-| `deleteUntagged` | Delete all untagged images | No | `false` |
-| `deleteTags` | Delete specific tags (wildcard/regex) | No | - |
-| `excludeTags` | Exclude tags from deletion | No | - |
-| `olderThan` | Delete images older than (e.g., "30d", "2w", "1m") | No | - |
-| `deleteGhostImages` | Delete ghost images | No | `false` |
-| `deletePartialImages` | Delete partial multi-arch images | No | `false` |
-| `deleteOrphanedImages` | Delete orphaned images | No | `false` |
+| `dry-run` | Simulate cleanup without deleting | No | `false` |
+| `keep-n-tagged` | Keep N latest tagged images | No | - |
+| `keep-n-untagged` | Keep N latest untagged images | No | - |
+| `delete-untagged` | Delete all untagged images | No | `false` |
+| `delete-tags` | Delete specific tags (wildcard/regex) | No | - |
+| `exclude-tags` | Exclude tags from deletion | No | - |
+| `older-than` | Delete images older than (e.g., "30d", "2w", "1m") | No | - |
+| `delete-ghost-images` | Delete ghost images | No | `false` |
+| `delete-partial-images` | Delete partial multi-arch images | No | `false` |
+| `delete-orphaned-images` | Delete orphaned images | No | `false` |
 | `validate` | Validate multi-arch images after cleanup | No | `false` |
 
 ### API Configuration
@@ -180,10 +180,10 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 
 | Output | Description |
 |--------|-------------|
-| `deletedCount` | Number of images/packages deleted |
-| `keptCount` | Number of images/packages kept |
-| `deletedTags` | List of deleted tags (comma-separated) |
-| `keptTags` | List of kept tags (comma-separated) |
+| `deleted-count` | Number of images/packages deleted |
+| `kept-count` | Number of images/packages kept |
+| `deleted-tags` | List of deleted tags (comma-separated) |
+| `kept-tags` | List of kept tags (comma-separated) |
 
 ## Registry Types
 
@@ -264,18 +264,18 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 
 ## Security Considerations
 
-- **⚠️ Always Use Dry-Run First**: This action **permanently deletes** tags and images. Always test with `dryRun: true` first to preview deletions before running in production.
+- **⚠️ Always Use Dry-Run First**: This action **permanently deletes** tags and images. Always test with `dry-run: true` first to preview deletions before running in production.
 - **Tokens**: Use GitHub/Gitea secrets for authentication tokens. Never commit tokens to your repository.
 - **Permissions**: Ensure tokens have appropriate scopes (`write:packages`, `delete:packages`). Use the minimum required permissions.
-- **Exclude Tags**: Use `excludeTags` to protect important images (e.g., `latest`, `dev`, `main`, `stable`).
+- **Exclude Tags**: Use `exclude-tags` to protect important images (e.g., `latest`, `dev`, `main`, `stable`).
 - **Start Small**: Test with a single package before cleaning up multiple packages.
-- **Review Output**: Carefully review dryRun output to ensure only intended images/tags are marked for deletion.
+- **Review Output**: Carefully review dry-run output to ensure only intended images/tags are marked for deletion.
 
 ## Migration from ghcr-io-cleanup-action
 
 To migrate from `ghcr-io-cleanup-action`:
 
-1. Add `registryType: ghcr` input (or use `auto` with `registryUrl: ghcr.io`)
+1. Add `registry-type: ghcr` input (or use `auto` with `registry-url: ghcr.io`)
 2. All other inputs remain the same
 3. Behavior should be identical for GHCR
 

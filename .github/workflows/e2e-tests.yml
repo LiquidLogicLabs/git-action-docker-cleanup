@@ -32,15 +32,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Test - ${{ matrix.registry.type }} (dryRun)
+      - name: Test - ${{ matrix.registry.type }} (dry-run)
         id: test-dry-run
         uses: ./
         with:
-          registryType: ${{ matrix.registry.type }}
-          registryUrl: ${{ matrix.registry.url }}
+          registry-type: ${{ matrix.registry.type }}
+          registry-url: ${{ matrix.registry.url }}
           package: test-package
           token: ${{ secrets.GITHUB_TOKEN }}
-          dryRun: true
+          dry-run: true
           verbose: true
         continue-on-error: true
 
@@ -197,16 +197,16 @@ jobs:
         continue-on-error: ${{ matrix.registry.type == 'ghcr' }}
         uses: ./
         with:
-          registryType: ${{ matrix.registry.type }}
-          registryUrl: ${{ matrix.registry.url }}
-          registryUsername: ${{ matrix.registry.username }}
-          registryPassword: ${{ steps.registry-config.outputs.docker_password }}
+          registry-type: ${{ matrix.registry.type }}
+          registry-url: ${{ matrix.registry.url }}
+          registry-username: ${{ matrix.registry.username }}
+          registry-password: ${{ steps.registry-config.outputs.docker_password }}
           token: ${{ secrets[matrix.registry.token_secret] }}
           owner: ${{ matrix.registry.package_prefix }}
           package: ${{ steps.registry-config.outputs.package_prefix_lower }}/e2e-test-image
-          deleteTags: test-tag-*
-          excludeTags: keep-me
-          dryRun: false
+          delete-tags: test-tag-*
+          exclude-tags: keep-me
+          dry-run: false
           verbose: true
 
       - name: Verify tags deleted

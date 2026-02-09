@@ -41,8 +41,10 @@ const core = __importStar(require("@actions/core"));
  */
 class Logger {
     verbose;
-    constructor(verbose = false) {
-        this.verbose = verbose;
+    debugMode;
+    constructor(verbose = false, debugMode = false) {
+        this.verbose = verbose || debugMode; // debug implies verbose
+        this.debugMode = debugMode;
     }
     /**
      * Log an info message
@@ -63,16 +65,36 @@ class Logger {
         core.error(message);
     }
     /**
-     * Log a debug message - uses core.info() when verbose is true so it always shows
-     * Falls back to core.debug() when verbose is false (for when ACTIONS_STEP_DEBUG is set at workflow level)
+     * Log a verbose info message - only shown when verbose is true
+     */
+    verboseInfo(message) {
+        if (this.verbose) {
+            core.info(message);
+        }
+    }
+    /**
+     * Log a debug message - uses core.info() with [DEBUG] prefix when debugMode is true,
+     * falls back to core.debug() otherwise (for when ACTIONS_STEP_DEBUG is set at workflow level)
      */
     debug(message) {
-        if (this.verbose) {
+        if (this.debugMode) {
             core.info(`[DEBUG] ${message}`);
         }
         else {
             core.debug(message);
         }
+    }
+    /**
+     * Check if verbose logging is enabled
+     */
+    isVerbose() {
+        return this.verbose;
+    }
+    /**
+     * Check if debug mode is enabled
+     */
+    isDebug() {
+        return this.debugMode;
     }
 }
 exports.Logger = Logger;

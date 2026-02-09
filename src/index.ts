@@ -1,6 +1,5 @@
 import * as core from '@actions/core';
 import { getInputs } from './config';
-import { Logger } from './logger';
 import { HttpClient } from './utils/api';
 import { createProvider } from './providers/factory';
 import { CleanupEngine } from './cleanup/engine';
@@ -10,10 +9,7 @@ import { CleanupEngine } from './cleanup/engine';
  */
 async function run(): Promise<void> {
   try {
-    const { providerConfig, cleanupConfig, packages, skipCertificateCheck } = getInputs();
-
-    // Initialize logger
-    const logger = new Logger(cleanupConfig.verbose);
+    const { providerConfig, cleanupConfig, packages, skipCertificateCheck, logger } = getInputs();
 
     if (skipCertificateCheck) {
       logger.warning('TLS certificate verification is disabled. This is a security risk and should only be used with trusted endpoints.');
@@ -40,10 +36,10 @@ async function run(): Promise<void> {
     const result = await engine.run(packages);
 
     // Set outputs
-    core.setOutput('deletedCount', result.deletedCount);
-    core.setOutput('keptCount', result.keptCount);
-    core.setOutput('deletedTags', result.deletedTags.join(','));
-    core.setOutput('keptTags', result.keptTags.join(','));
+    core.setOutput('deleted-count', result.deletedCount);
+    core.setOutput('kept-count', result.keptCount);
+    core.setOutput('deleted-tags', result.deletedTags.join(','));
+    core.setOutput('kept-tags', result.keptTags.join(','));
 
     // Log results
     logger.info(`Cleanup complete: ${result.deletedCount} deleted, ${result.keptCount} kept`);
