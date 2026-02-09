@@ -8,6 +8,8 @@ Use this as an action-agnostic playbook for building, testing, documenting, and 
 
 This guidance is written for GitHub Actions, but most patterns also apply to compatible runners/forges (with small differences in APIs, permissions, and tokens).
 
+**Sync:** This file is the canonical source. Some action repos have a copy under `.cursor/rules/action-best-practices.mdc`; when updating this file, update those copies so input/output convention (kebab-case), version/release script standard, and other guidance stay in sync.
+
 ## 1) Scope and Principles
 
 - Prefer boring, predictable designs over clever ones.
@@ -66,7 +68,7 @@ Optional but recommended:
 
 ### 4.1 Inputs
 
-- Use `camelCase` for input names (org standard).
+- Use `kebab-case` for input names (ecosystem convention).
 - Provide examples in descriptions when the input format is non-trivial.
 - Prefer explicit defaults for optional inputs.
 - Consider forward-compatibility: once published, changing input names is a breaking change.
@@ -75,16 +77,16 @@ Common input conventions (recommended):
 
 - `token`: optional override; default should come from the workflow (`${{ github.token }}` / `secrets.GITHUB_TOKEN`) when applicable.
 - `platform` / `provider`: when supporting multiple forges, allow explicit override in addition to auto-detection.
-- `dryRun`: for destructive actions, support a dry-run mode.
+- `dry-run`: for destructive actions, support a dry-run mode.
 - `verbose`: for extra logs.
-- `skipCertificateCheck`: when the action calls external URLs (HTTP APIs, package registries, downloads) or invokes network-capable CLIs, provide an opt-in escape hatch to disable TLS certificate validation for that operation. Default should be `false`, and the action should emit a clear warning when enabled.
+- `skip-certificate-check`: when the action calls external URLs (HTTP APIs, package registries, downloads) or invokes network-capable CLIs, provide an opt-in escape hatch to disable TLS certificate validation for that operation. Default should be `false`, and the action should emit a clear warning when enabled.
 - Repository targeting: prefer a single `repository` in `owner/repo` form; optionally allow `owner` + `repo` inputs for convenience.
 
 List inputs:
 
 - If an input accepts multiple values, clearly document the format.
 - Prefer accepting comma-separated lists and trimming whitespace; ignore empty entries.
-- If you support globs/regex, use explicit flags like `useRegex`/`expandPackages` and document examples.
+- If you support globs/regex, use explicit flags like `use-regex`/`expand-packages` and document examples.
 
 Boolean inputs:
 
@@ -93,7 +95,7 @@ Boolean inputs:
 
 ### 4.2 Outputs
 
-- Use `camelCase` for output names (match inputs; org standard).
+- Use `kebab-case` for output names (match inputs; ecosystem convention).
 - Output names should be stable and documented.
 - Outputs should be machine-friendly (JSON or simple scalars).
 - If output is complex, consider emitting JSON and providing a minimal scalar for common cases.
@@ -191,15 +193,59 @@ If you support a `verbose` input, route verbose debug logs through `core.info()`
 For non-trivial actions (multiple modules, HTTP calls, retries, lots of branching), consider a tiny logger wrapper (class or functions) that standardizes:
 
 - message prefixes and formatting
-- optional `verbose` input behavior
+- two-tier verbosity: `verbose` (operational detail) and `debugMode` (full diagnostics)
 - consistent grouping (start/end), and context fields
 
 Guidelines:
 
 - Keep it thin: it should call `@actions/core` under the hood.
 - Prefer passing `logger` into modules instead of passing `verbose` booleans everywhere.
-- Still support `core.debug()` so workflow-level debug (`ACTIONS_STEP_DEBUG`) works. If you wrap logging, treat “debug enabled” as `core.isDebug()` (toolkit) or `process.env.ACTIONS_STEP_DEBUG === 'true'`, not only as `verbose`.
-- If you emit verbose logs via `core.info()`, prefix with something like `[DEBUG]`.
+- Support two tiers of extra logging:
+  - **verbose** (`verbose` input): operational info like resolved inputs, detected platform, operations performed. Output via `core.info()` with no prefix.
+  - **debug** (`ACTIONS_STEP_DEBUG` / `core.isDebug()`): full diagnostics including sanitized HTTP requests/responses and data dumps. Output via `core.info()` with a `[DEBUG]` prefix when `debugMode` is active, otherwise via `core.debug()` for framework-level visibility.
+- `debugMode` implies `verbose` (debug enables both tiers).
+- Detect debug mode via `core.isDebug()` or `process.env.ACTIONS_STEP_DEBUG === 'true'` -- do not add a custom `debug` input.
+
+Recommended Logger class template:
+
+```ts
+import * as core from '@actions/core';
+
+export class Logger {
+  public readonly verbose: boolean;
+  public readonly debugMode: boolean;
+
+  constructor(verbose: boolean = false, debugMode: boolean = false) {
+    this.verbose = verbose || debugMode; // debug implies verbose
+    this.debugMode = debugMode;
+  }
+
+  info(message: string): void { core.info(message); }
+  warning(message: string): void { core.warning(message); }
+  error(message: string): void { core.error(message); }
+
+  // Shown when verbose=true OR debug=true -- useful operational detail
+  // No prefix -- appears as clean info lines
+  verboseInfo(message: string): void {
+    if (this.verbose) {
+      core.info(message);
+    }
+  }
+
+  // Shown when debug=true (ACTIONS_STEP_DEBUG) -- full diagnostic detail
+  // Includes sanitized HTTP requests/responses, data dumps, etc.
+  debug(message: string): void {
+    if (this.debugMode) {
+      core.info(`[DEBUG] ${message}`);
+    } else {
+      core.debug(message); // framework-level, only visible when runner debug enabled
+    }
+  }
+
+  isVerbose(): boolean { return this.verbose; }
+  isDebug(): boolean { return this.debugMode; }
+}
+```
 
 ### 5.5 Secret handling
 
@@ -218,7 +264,7 @@ Guidelines:
 
 - Keep shared libraries small, well-tested, and stable; treat them like public APIs.
 - Pin shared dependencies intentionally (use semver ranges thoughtfully; consider pinning to `~` or exact versions if you need maximum reproducibility).
-- Avoid having a Node.js action “call another action” at runtime. If you need composition, do it in the workflow (or in a composite action).
+- Avoid having a Node.js action "call another action" at runtime. If you need composition, do it in the workflow (or in a composite action).
 
 Org-specific (LiquidLogicLabs):
 
@@ -276,32 +322,38 @@ Notes:
 
 Optional: versioning and release helper scripts
 
-If you use `standard-version` for changelog + tag creation, expose consistent scripts for bumping major/minor/patch.
+If you use `standard-version` for changelog + tag creation, expose consistent scripts for bumping major/minor/patch. Use the same script names and patterns across all actions so releases stay predictable.
 
-Recommended scripts:
+**Shared scripts (all actions that version):**
+
+- `version:dry-run`: `standard-version --dry-run`
+- `version:patch` / `version:minor` / `version:major`: `standard-version --release-as patch|minor|major` (no `--skip.changelog`; use when you want changelog updated).
+- `release:push`: always `git push --follow-tags origin HEAD`. All `release:*` scripts must end with `npm run release:push` (never raw `git push`).
+
+**Node.js actions (have `dist/`):** Run package, bump with `--skip.changelog`, amend the version commit to include `dist/`, then push. This ensures the pushed commit contains the freshly built artifact.
 
 ```json
-{
-  "scripts": {
-    "version:dry-run": "standard-version --dry-run",
-    "version:patch": "standard-version --release-as patch",
-    "version:minor": "standard-version --release-as minor",
-    "version:major": "standard-version --release-as major",
-    "release:push": "git push --follow-tags origin HEAD",
-    "release:patch": "npm run version:patch && npm run release:push",
-    "release:minor": "npm run version:minor && npm run release:push",
-    "release:major": "npm run version:major && npm run release:push"
-  }
-}
+"release:patch": "npm run package && standard-version --release-as patch --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push",
+"release:minor": "npm run package && standard-version --release-as minor --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push",
+"release:major": "npm run package && standard-version --release-as major --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push"
+```
+
+**Composite actions (no `dist/`):** Bump only, then push.
+
+```json
+"release:patch": "standard-version --release-as patch --skip.changelog && npm run release:push",
+"release:minor": "standard-version --release-as minor --skip.changelog && npm run release:push",
+"release:major": "standard-version --release-as major --skip.changelog && npm run release:push"
 ```
 
 Notes:
 
-- `standard-version` will update `CHANGELOG.md`, bump `package.json`, and create a git tag.
+- Before running `release:patch` / `release:minor` / `release:major`, ensure lint and test have passed (e.g. run `npm run lint` and `npm test` locally, or rely on CI being green on the branch you are releasing from).
+- `standard-version` will update `CHANGELOG.md` (unless `--skip.changelog`), bump `package.json`, and create a git tag.
 - The `version:*` scripts do not push; keeping push separate makes it easier to review the diff and abort before publishing.
-- `release:push` uses `--follow-tags` so the newly created tag is pushed with your commit.
-- The combined `release:*` scripts are optional; only add them if your workflow is comfortable doing “bump + tag + push” in one command.
+- For one-shot releases, use `--skip.changelog` in the `release:*` one-liner so CI/changelog can be updated separately if desired.
 - Only include these scripts if your repo actually uses `standard-version`.
+- The CI release workflow (tag-triggered) should still run lint/test/package and verify `dist/` is up-to-date (see §9.3); local scripts ensure the pushed commit contains `dist/`, CI provides defense in depth.
 
 Optional: running the release workflow locally via `act`
 
@@ -531,8 +583,8 @@ Common org pattern:
 Notes:
 
 - Secrets do **not** automatically flow into reusable workflows. If the called workflow uses `secrets.*` (e.g., `NPM_REGISTRY_TOKEN` for a private registry), the caller must pass secrets via `secrets: inherit` or by mapping only the required secrets.
-- `env:` from the caller job does **not** get “passed” into a reusable workflow job; use `workflow_call` inputs (`with:`) and/or repository `vars` to pass non-secret configuration.
-- Concurrency + reusable workflows: GitHub can cancel runs with an annotation like “deadlock was detected for concurrency group … between a top level workflow and 'test'” if the caller and callee end up sharing the same concurrency group. For reusable workflows, prefer an explicit group prefix (don’t rely on `github.workflow`), or omit `concurrency` in the callee and let the entry workflow own concurrency.
+- `env:` from the caller job does **not** get "passed" into a reusable workflow job; use `workflow_call` inputs (`with:`) and/or repository `vars` to pass non-secret configuration.
+- Concurrency + reusable workflows: GitHub can cancel runs with an annotation like "deadlock was detected for concurrency group ... between a top level workflow and 'test'" if the caller and callee end up sharing the same concurrency group. For reusable workflows, prefer an explicit group prefix (don't rely on `github.workflow`), or omit `concurrency` in the callee and let the entry workflow own concurrency.
 
 Example (reusable `test.yml`):
 
@@ -548,7 +600,7 @@ Recommended:
 
 - Use `actions/setup-node@v4` and enable `cache: npm`.
 - Use `npm ci` in CI (deterministic installs).
-- If you use a private registry, commit only a tokenless `.npmrc` (registry + `${NPM_REGISTRY_TOKEN}` placeholder) or generate it at runtime; never commit real tokens, and avoid mutating a tracked `.npmrc` during CI/release (prefer exporting `NPM_REGISTRY_TOKEN` via `env`).
+- If you use a private registry, write `.npmrc` in the workflow from a token secret; never commit it.
 
 ### 8.5 Concurrency
 
@@ -563,7 +615,7 @@ Recommended patterns:
 
 ```yaml
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 ```
 
@@ -642,7 +694,7 @@ jobs:
 
 Guidelines:
 
-- Keep the matrix minimal (don’t multiply OS × Node × extras unless you truly need it).
+- Keep the matrix minimal (don't multiply OS x Node x extras unless you truly need it).
 - If only a subset is platform-sensitive, run the full matrix on `pull_request` but a reduced set on `push`/`schedule`.
 - If a job has side effects (publishing, tagging), do not run it in a matrix.
 
@@ -660,7 +712,7 @@ Before tagging:
 
 - Local: `npm test`, `npm run lint`, `npm run package`
 - CI: green on the commit you will tag
-like when running under 
+
 ### 9.3 Release workflow design
 
 Recommended release workflow properties (be consistent across repos):
@@ -701,17 +753,31 @@ Consistency checklist (apply the same order across repos):
 9. Publish the release
 10. Add a brief job summary (`$GITHUB_STEP_SUMMARY`) with links and version info
 
+### 9.4 Community comparison
+
+How this playbook’s release approach compares to community and official recommendations:
+
+**Versioning tool:** We use `standard-version`. It is deprecated (unmaintained); the maintainer recommends moving to alternatives. When you are ready to migrate, consider:
+
+- **commit-and-tag-version** — Drop-in replacement (same CLI and config); swap the package name and keep existing scripts.
+- **release-please** (Google) — GitHub-oriented; generates PRs with version bumps and changelog; more automation, different workflow.
+- **semantic-release** — Fully automated from conventional commits; no manual bump scripts; often used with “no commit back” for npm packages.
+
+Until then, our script standard remains valid; the main gap is long-term maintenance of the versioning tool.
+
+**Where `dist/` lives:** GitHub’s [Releasing and maintaining actions](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/release-and-maintain-actions) example describes a flow where the default branch stays source-only and **only tagged release commits** contain the built output (e.g. via a release-triggered workflow that builds and force-pushes tags). Our approach commits `dist/` into the version commit on the release branch and tags that commit, so the branch history includes the built artifact. Both patterns ensure the tag points at a commit that has the correct `dist/`; the difference is whether the default branch also has `dist/` in history. We choose “dist on branch” so that `@main` or `@v1` resolve to a runnable action without a separate release-asset step; the “dist only on tag” pattern keeps the default branch source-only. Either is acceptable; document the choice if you deviate.
+
 ## 10) Security Best Practices
 
 - Minimize permissions in workflows and action usage examples.
 - Pin third-party actions to a major version at minimum (or commit SHA for maximum security).
 - Prefer using well-maintained actions over ad-hoc scripts for common tasks (checkout, setup runtime, caching, artifact upload, releases).
 - Avoid executing remote scripts via `curl | bash` unless you verify checksums/signatures.
-- Do not silently bypass TLS verification. If you must support it (self-signed corp endpoints, air-gapped mirrors), gate it behind an explicit `skipCertificateCheck` input (default `false`) and warn loudly when enabled. Prefer scoping the bypass to the specific request/command rather than setting global environment flags (e.g., avoid globally setting `NODE_TLS_REJECT_UNAUTHORIZED=0`).
+- Do not silently bypass TLS verification. If you must support it (self-signed corp endpoints, air-gapped mirrors), gate it behind an explicit `skip-certificate-check` input (default `false`) and warn loudly when enabled. Prefer scoping the bypass to the specific request/command rather than setting global environment flags (e.g., avoid globally setting `NODE_TLS_REJECT_UNAUTHORIZED=0`).
 
 Scripts vs actions:
 
-- Prefer an action when it’s a standard, widely used task (less bespoke code, better ecosystem support).
+- Prefer an action when it's a standard, widely used task (less bespoke code, better ecosystem support).
 - Prefer an in-repo script when the logic is org-specific and needs versioning/review alongside the action.
 - If you find yourself copying the same inline `run: |` across repos, consider a reusable workflow or a small composite action.
 - Validate and sanitize any user-provided inputs used in shell commands.
@@ -721,7 +787,7 @@ Scripts vs actions:
 
 Recommended sections:
 
-- What it does (1–2 paragraphs)
+- What it does (1-2 paragraphs)
 - Quickstart usage snippet
 - Inputs table (name, required, default, description)
 - Outputs table
@@ -730,6 +796,8 @@ Recommended sections:
 - Troubleshooting / FAQ
 - Security notes (secrets, masking, permissions)
 - License
+
+Use **kebab-case** for all input and output names in README tables and in YAML examples (e.g. `skip-certificate-check`, `tag-name`). This must match `action.yml` and the GitHub Actions ecosystem convention.
 
 When showing `uses:`, demonstrate stable pins:
 

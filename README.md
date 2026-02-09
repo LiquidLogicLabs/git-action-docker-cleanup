@@ -185,6 +185,10 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 | `deleted-tags` | List of deleted tags (comma-separated) |
 | `kept-tags` | List of kept tags (comma-separated) |
 
+## Permissions
+
+The action calls the registry API to delete images/tags. The job must use a token with delete scope for the target registry (e.g. `GITHUB_TOKEN` with `packages: write` for GHCR, or a PAT with equivalent permissions for other registries).
+
 ## Registry Types
 
 ### GHCR (GitHub Container Registry)
