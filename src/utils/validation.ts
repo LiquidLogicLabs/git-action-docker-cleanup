@@ -4,7 +4,7 @@ import { RegistryType, ProviderConfig, CleanupConfig } from '../types';
  * Validate and parse registry type
  */
 export function validateRegistryType(type: string): RegistryType {
-  const validTypes: RegistryType[] = ['ghcr', 'gitea', 'docker-hub', 'docker', 'auto'];
+  const validTypes: RegistryType[] = ['ghcr', 'gitea', 'docker-hub', 'docker', 'oci', 'auto'];
   if (!validTypes.includes(type as RegistryType)) {
     throw new Error(
       `Invalid registry-type: ${type}. Must be one of: ${validTypes.join(', ')}`
@@ -24,7 +24,7 @@ export function validateProviderConfig(config: Partial<ProviderConfig>): void {
   const registryType = validateRegistryType(config.registryType);
 
   // Validate registry-url requirements
-  if (registryType === 'gitea' || registryType === 'docker' || registryType === 'auto') {
+  if (registryType === 'gitea' || registryType === 'docker' || registryType === 'oci' || registryType === 'auto') {
     if (!config.registryUrl) {
       throw new Error(
         `registry-url is required when registry-type is ${registryType}`

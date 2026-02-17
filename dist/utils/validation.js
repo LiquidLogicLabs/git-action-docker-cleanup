@@ -12,7 +12,7 @@ exports.expandPackages = expandPackages;
  * Validate and parse registry type
  */
 function validateRegistryType(type) {
-    const validTypes = ['ghcr', 'gitea', 'docker-hub', 'docker', 'auto'];
+    const validTypes = ['ghcr', 'gitea', 'docker-hub', 'docker', 'oci', 'auto'];
     if (!validTypes.includes(type)) {
         throw new Error(`Invalid registry-type: ${type}. Must be one of: ${validTypes.join(', ')}`);
     }
@@ -27,7 +27,7 @@ function validateProviderConfig(config) {
     }
     const registryType = validateRegistryType(config.registryType);
     // Validate registry-url requirements
-    if (registryType === 'gitea' || registryType === 'docker' || registryType === 'auto') {
+    if (registryType === 'gitea' || registryType === 'docker' || registryType === 'oci' || registryType === 'auto') {
         if (!config.registryUrl) {
             throw new Error(`registry-url is required when registry-type is ${registryType}`);
         }
