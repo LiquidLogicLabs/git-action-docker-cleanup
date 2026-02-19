@@ -322,38 +322,65 @@ Notes:
 
 Optional: versioning and release helper scripts
 
-If you use `standard-version` for changelog + tag creation, expose consistent scripts for bumping major/minor/patch. Use the same script names and patterns across all actions so releases stay predictable.
+Use npm's built-in `npm version` command with lifecycle hooks for versioning and releasing. This approach is standard, requires no third-party versioning tool, and keeps the release flow simple and predictable. Use `conventional-changelog-cli` for changelog generation from conventional commits.
 
-**Shared scripts (all actions that version):**
-
-- `version:dry-run`: `standard-version --dry-run`
-- `version:patch` / `version:minor` / `version:major`: `standard-version --release-as patch|minor|major` (no `--skip.changelog`; use when you want changelog updated).
-- `release:push`: always `git push --follow-tags origin HEAD`. All `release:*` scripts must end with `npm run release:push` (never raw `git push`).
-
-**Node.js actions (have `dist/`):** Run package, bump with `--skip.changelog`, amend the version commit to include `dist/`, then push. This ensures the pushed commit contains the freshly built artifact.
+**npm lifecycle hooks (add to `package.json` scripts):**
 
 ```json
-"release:patch": "npm run package && standard-version --release-as patch --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push",
-"release:minor": "npm run package && standard-version --release-as minor --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push",
-"release:major": "npm run package && standard-version --release-as major --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push"
+"preversion": "npm test",
+"version": "conventional-changelog -p angular -i CHANGELOG.md -s && git add CHANGELOG.md",
+"postversion": "git push --follow-tags origin HEAD"
 ```
 
-**Composite actions (no `dist/`):** Bump only, then push.
+- `preversion` runs **before** the version bump — gate on passing tests.
+- `version` runs **after** the bump but **before** the commit — generate changelog and stage it.
+- `postversion` runs **after** the commit and tag — push everything.
+
+**Release convenience scripts (all actions):**
 
 ```json
-"release:patch": "standard-version --release-as patch --skip.changelog && npm run release:push",
-"release:minor": "standard-version --release-as minor --skip.changelog && npm run release:push",
-"release:major": "standard-version --release-as major --skip.changelog && npm run release:push"
+"release:patch": "npm version patch -m \"chore(release): %s\"",
+"release:minor": "npm version minor -m \"chore(release): %s\"",
+"release:major": "npm version major -m \"chore(release): %s\""
 ```
+
+The `-m "chore(release): %s"` flag produces conventional commit messages (`chore(release): 2.0.3`). The `%s` is replaced by the new version.
+
+**How `dist/` is handled for Node.js actions:**
+
+Node.js actions need `dist/` in the release commit. Rather than amending commits or force-tagging, rely on the Husky pre-commit hook:
+
+1. `npm version patch` bumps `package.json` and creates a commit.
+2. The git pre-commit hook fires, detects the `package.json` change, runs lint, rebuilds `dist/`, and stages it via `git add dist/`.
+3. The commit lands with `package.json`, `package-lock.json`, `CHANGELOG.md`, and `dist/` — all in one clean commit, one tag, no amending.
+
+This requires the pre-commit hook to detect config/source changes and rebuild (see §3 recommended layout, `.husky/`). Example pre-commit hook:
+
+```sh
+#!/bin/sh
+set -e
+changed_files=$(git diff --cached --name-only --diff-filter=ACMR)
+if echo "$changed_files" | grep -E '^(src/|package(-lock)?\.json|tsconfig.*\.json)' >/dev/null; then
+  echo "Detected source/config changes; running lint..."
+  npm run lint
+  echo "Rebuilding dist..."
+  npm run package
+  git add dist/
+fi
+```
+
+**Composite actions (no `dist/`):** The same lifecycle hooks work; the pre-commit hook simply skips the rebuild since there are no source changes to detect.
+
+**Changelog:**
+
+Keep `CHANGELOG.md` enabled for platform agnosticism — it works on GitHub, Gitea, Bitbucket, and offline. The `version` lifecycle hook generates it automatically from conventional commits via `conventional-changelog-cli`.
 
 Notes:
 
-- Before running `release:patch` / `release:minor` / `release:major`, ensure lint and test have passed (e.g. run `npm run lint` and `npm test` locally, or rely on CI being green on the branch you are releasing from).
-- `standard-version` will update `CHANGELOG.md` (unless `--skip.changelog`), bump `package.json`, and create a git tag.
-- The `version:*` scripts do not push; keeping push separate makes it easier to review the diff and abort before publishing.
-- For one-shot releases, use `--skip.changelog` in the `release:*` one-liner so CI/changelog can be updated separately if desired.
-- Only include these scripts if your repo actually uses `standard-version`.
-- The CI release workflow (tag-triggered) should still run lint/test/package and verify `dist/` is up-to-date (see §9.3); local scripts ensure the pushed commit contains `dist/`, CI provides defense in depth.
+- `npm version` also updates `package-lock.json` automatically.
+- The `v` tag prefix is npm's default (`tag-version-prefix` in `.npmrc`).
+- The CI release workflow should still run lint/test/package and verify `dist/` is up-to-date (see §9.3); lifecycle hooks ensure the local commit is correct, CI provides defense in depth.
+- DevDependency required: `conventional-changelog-cli`.
 
 Optional: running the release workflow locally via `act`
 
@@ -385,7 +412,13 @@ Example `package.json` scripts:
     "lint": "eslint src/**/*.ts --no-warn-ignored",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "preversion": "npm test",
+    "version": "conventional-changelog -p angular -i CHANGELOG.md -s && git add CHANGELOG.md",
+    "postversion": "git push --follow-tags origin HEAD",
+    "release:patch": "npm version patch -m \"chore(release): %s\"",
+    "release:minor": "npm version minor -m \"chore(release): %s\"",
+    "release:major": "npm version major -m \"chore(release): %s\""
   }
 }
 ```
@@ -755,15 +788,15 @@ Consistency checklist (apply the same order across repos):
 
 ### 9.4 Community comparison
 
-How this playbook’s release approach compares to community and official recommendations:
+How this playbook's release approach compares to community and official recommendations:
 
-**Versioning tool:** We use `standard-version`. It is deprecated (unmaintained); the maintainer recommends moving to alternatives. When you are ready to migrate, consider:
+**Versioning tool:** We use npm's built-in `npm version` command with lifecycle hooks (`preversion`/`version`/`postversion`) and `conventional-changelog-cli` for changelog generation. This is the most standard approach — no third-party versioning tool required. For Node.js actions, the Husky pre-commit hook handles rebuilding and staging `dist/` during the version commit (see §6).
 
-- **commit-and-tag-version** — Drop-in replacement (same CLI and config); swap the package name and keep existing scripts.
-- **release-please** (Google) — GitHub-oriented; generates PRs with version bumps and changelog; more automation, different workflow.
-- **semantic-release** — Fully automated from conventional commits; no manual bump scripts; often used with “no commit back” for npm packages.
+Alternative tools (for reference, not currently used):
 
-Until then, our script standard remains valid; the main gap is long-term maintenance of the versioning tool.
+- **commit-and-tag-version** — Community fork of the deprecated `standard-version`; handles version bump + changelog + commit + tag in one command. Good if you prefer a single tool over lifecycle hooks.
+- **release-please** (Google) — GitHub-oriented; generates PRs with version bumps and changelog; more automation, different workflow. Tightly coupled to GitHub.
+- **semantic-release** — Fully automated from conventional commits; no manual bump scripts; often used with "no commit back" for npm packages.
 
 **Where `dist/` lives:** GitHub’s [Releasing and maintaining actions](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/release-and-maintain-actions) example describes a flow where the default branch stays source-only and **only tagged release commits** contain the built output (e.g. via a release-triggered workflow that builds and force-pushes tags). Our approach commits `dist/` into the version commit on the release branch and tags that commit, so the branch history includes the built artifact. Both patterns ensure the tag points at a commit that has the correct `dist/`; the difference is whether the default branch also has `dist/` in history. We choose “dist on branch” so that `@main` or `@v1` resolve to a runnable action without a separate release-asset step; the “dist only on tag” pattern keeps the default branch source-only. Either is acceptable; document the choice if you deviate.
 

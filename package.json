@@ -21,14 +21,12 @@
     "test:act:e2e": "act --container-options \"--user $(id -u):$(id -g) -v /var/run/docker.sock:/var/run/docker.sock --group-add $(stat -c %g /var/run/docker.sock)\" workflow_dispatch -W .github/workflows/e2e-tests.yml --eventpath .github/workflows/.act/event-e2e-tests.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars",
     "test:act:e2e:verbose": "act --container-options \"--user $(id -u):$(id -g) -v /var/run/docker.sock:/var/run/docker.sock --group-add $(stat -c %g /var/run/docker.sock)\" workflow_dispatch -W .github/workflows/e2e-tests.yml --eventpath .github/workflows/.act/event-e2e-tests.json --env-file .act.env --secret-file .act.secrets --var-file .act.vars -v",
     "lint:act": "act --container-options \"--user $(id -u):$(id -g)\" -W .github/workflows/ci.yml -j lint --env-file .act.env --secret-file .act.secrets --var-file .act.vars",
-    "version:dry-run": "standard-version --dry-run",
-    "version:patch": "standard-version --release-as patch",
-    "version:minor": "standard-version --release-as minor",
-    "version:major": "standard-version --release-as major",
-    "release:push": "git push --follow-tags origin HEAD",
-    "release:patch": "npm run package && standard-version --release-as patch --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push",
-    "release:minor": "npm run package && standard-version --release-as minor --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push",
-    "release:major": "npm run package && standard-version --release-as major --skip.changelog && (V=$(node -p \"require('./package.json').version\") && git add dist/ && git commit --amend --no-edit && git tag -f v$V) && npm run release:push",
+    "preversion": "npm test",
+    "version": "conventional-changelog -p angular -i CHANGELOG.md -s && git add CHANGELOG.md",
+    "postversion": "git push --follow-tags origin HEAD",
+    "release:patch": "npm version patch -m \"chore(release): %s\"",
+    "release:minor": "npm version minor -m \"chore(release): %s\"",
+    "release:major": "npm version major -m \"chore(release): %s\"",
     "test:act:ci:push": "act --container-options \"--user $(id -u):$(id -g)\" --env-file .act.env --var-file .act.vars --secret-file .act.secrets -W .github/workflows/ci.yml --eventpath .github/workflows/.act/event-push.json",
     "test:act:ci:dispatch": "act --container-options \"--user $(id -u):$(id -g)\" --env-file .act.env --var-file .act.vars --secret-file .act.secrets -W .github/workflows/ci.yml --eventpath .github/workflows/.act/event-workflow_dispatch.json",
     "test:act:ci:with-secrets": "act --container-options \"--user $(id -u):$(id -g)\" --env-file .act.env --var-file .act.vars --secret-file .act.secrets -W .github/workflows/ci.yml",
@@ -64,9 +62,6 @@
     "husky": "^9.1.7",
     "ts-jest": "^29.1.2",
     "typescript": "^5.9.3",
-    "standard-version": "^9.5.0"
-  },
-  "standard-version": {
-    "tagPrefix": "v"
+    "conventional-changelog-cli": "^5.0.0"
   }
 }
