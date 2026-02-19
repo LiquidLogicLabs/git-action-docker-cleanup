@@ -1,0 +1,57 @@
+{
+  "name": "Git Tag Validate Version Action",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-20-bookworm",
+
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": { "version": "latest" },
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-typescript-next",
+        "orta.vscode-jest",
+        "github.vscode-github-actions"
+      ],
+      "settings": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "typescript.enablePromptUseWorkspaceTsdk": true
+      }
+    }
+  },
+
+  // Runs on the HOST before the container builds.
+  // Ensures ~/.actrc exists so the mount below never fails.
+  "initializeCommand": "touch ${HOME}/.actrc",
+
+  "mounts": [
+    // Bind .git so git tag operations work inside the container.
+    "source=${localWorkspaceFolder}/.git,target=/workspaces/${localWorkspaceFolderBasename}/.git,type=bind,consistency=cached",
+    // Mount host ~/.actrc read-only — carries all act platform mappings, flags, and secrets
+    // (GITHUB_TOKEN, DOCKERHUB_TOKEN, NPM_REGISTRY_TOKEN, etc.) into the container.
+    "source=${env:HOME}/.actrc,target=/home/node/.actrc,type=bind,consistency=cached,readonly"
+  ],
+
+  // Pass host shell environment tokens into the devcontainer for direct CLI use
+  // (gh CLI, gitea CLI, npm with private registry, etc.).
+  // Values come from your host shell exports — empty string if not set.
+  // Note: act secrets (from ~/.actrc -s flags) are separate and only available
+  // inside act workflow runs, not in the devcontainer shell.
+  "containerEnv": {
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "GITEA_TOKEN": "${localEnv:GITEA_TOKEN}",
+    "NPM_REGISTRY_TOKEN": "${localEnv:NPM_REGISTRY_TOKEN}"
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "remoteUser": "node"
+}
