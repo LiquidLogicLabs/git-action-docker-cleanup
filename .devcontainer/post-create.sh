@@ -21,6 +21,24 @@ if ! command -v act &>/dev/null; then
     | sudo bash -s -- -b /usr/local/bin
 fi
 
+echo "==> Loading secrets..."
+SECRETS_FILE="$(pwd)/.devcontainer-secrets"
+if [ -f "${SECRETS_FILE}" ]; then
+  # shellcheck source=/dev/null
+  source "${SECRETS_FILE}"
+  # Persist into all future interactive shells
+  grep -qxF "[ -f \"${SECRETS_FILE}\" ] && source \"${SECRETS_FILE}\"" ~/.bashrc \
+    || echo "[ -f \"${SECRETS_FILE}\" ] && source \"${SECRETS_FILE}\"" >> ~/.bashrc
+  echo "    Secrets loaded."
+else
+  echo "    WARNING: .devcontainer-secrets not found -- tokens will not be available."
+  echo "    Fill in .devcontainer/.devcontainer-secrets.sample, copy it to .devcontainer-secrets, and rebuild."
+fi
+
+echo "==> Configuring git HTTPS credential helper..."
+chmod +x .devcontainer/git-credential-helper.sh
+git config --global credential.helper "$(pwd)/.devcontainer/git-credential-helper.sh"
+
 echo "==> Seeding local act config files (if not already present)..."
 [ -f .act.env ]     || cp .act.env.sample .act.env
 [ -f .act.secrets ] || cp .act.secrets.sample .act.secrets
