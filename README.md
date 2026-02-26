@@ -174,6 +174,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 |-------|-------------|----------|---------|
 | `retry` | Retry count for API calls | No | `3` |
 | `throttle` | Throttle delay between calls (ms) | No | `1000` |
+| `skip-certificate-check` | Skip TLS certificate verification for registry API calls | No | `false` |
 | `verbose` | Enable verbose debug logging | No | `false` |
 
 ## Outputs
@@ -290,4 +291,3 @@ MIT
 ## Credits
 
 Based on the functionality of [ghcr-io-cleanup-action](https://github.com/marketplace/actions/ghcr-io-cleanup-action) by dataaxiom, extended to support multiple registries.
-# Test
