@@ -1,3 +1,12 @@
+## [2.0.2](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v2.0.1...v2.0.2) (2026-04-21)
+
+
+### Bug Fixes
+
+* correct action runtime to node24 ([18a8af6](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/18a8af619c383750af3a2c01bfb4b3f415ec447b))
+
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file. See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
