@@ -45,7 +45,13 @@ function getInputs() {
     const registryUrl = core.getInput('registry-url');
     const registryUsername = core.getInput('registry-username');
     const registryPassword = core.getInput('registry-password');
+    if (registryPassword) {
+        core.setSecret(registryPassword);
+    }
     const token = core.getInput('token');
+    if (token) {
+        core.setSecret(token);
+    }
     const owner = core.getInput('owner') ||
         process.env.GITEA_ACTOR ||
         process.env.GITHUB_ACTOR ||
