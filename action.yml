@@ -117,7 +117,7 @@ outputs:
     description: 'List of kept tags (comma-separated)'
 
 runs:
-  using: 'node22'
+  using: 'node24'
   main: 'dist/index.js'
 
 branding:
