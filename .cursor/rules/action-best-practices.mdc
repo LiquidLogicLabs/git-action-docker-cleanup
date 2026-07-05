@@ -106,9 +106,11 @@ Node.js actions:
 
 ```yaml
 runs:
-  using: node20
+  using: node24
   main: dist/index.js
 ```
+
+(LiquidLogicLabs standard is `node24`. `node20` is also supported by the runner; pick `node24` for new actions to match the org runtime.)
 
 Composite actions:
 
@@ -613,11 +615,13 @@ Common org pattern:
 - `e2e-tests.yml` runs external integration tests and should be written to skip gracefully when secrets are missing.
 - `release.yml` can compose them via `uses: ./.github/workflows/ci.yml` and `uses: ./.github/workflows/e2e-tests.yml` with `secrets: inherit`.
 
+An equally acceptable pattern is to inline `lint`/`typecheck`/`test`/`build` as separate jobs directly in `ci.yml` without a reusable `test.yml`. This is simpler when there is only one entry workflow and is more transparent. Pick one pattern per repo; do not split steps across both.
+
 Notes:
 
 - Secrets do **not** automatically flow into reusable workflows. If the called workflow uses `secrets.*` (e.g., `NPM_REGISTRY_TOKEN` for a private registry), the caller must pass secrets via `secrets: inherit` or by mapping only the required secrets.
 - `env:` from the caller job does **not** get "passed" into a reusable workflow job; use `workflow_call` inputs (`with:`) and/or repository `vars` to pass non-secret configuration.
-- Concurrency + reusable workflows: GitHub can cancel runs with an annotation like "deadlock was detected for concurrency group ... between a top level workflow and 'test'" if the caller and callee end up sharing the same concurrency group. For reusable workflows, prefer an explicit group prefix (don't rely on `github.workflow`), or omit `concurrency` in the callee and let the entry workflow own concurrency.
+- Concurrency + reusable workflows: GitHub can cancel runs with an annotation like "deadlock was detected for concurrency group ... between a top level workflow and 'test'" if the caller and callee end up sharing the same concurrency group. For reusable workflows, you **must** use an explicit, distinct group prefix — `${{ github.workflow }}` resolves to the **caller's** workflow name inside a callee, so patterns like `${{ github.workflow || 'Test' }}-…` produce the same group as the caller (the `'Test'` fallback never fires) and deadlock when `cancel-in-progress: true` is set. Either use a literal prefix (`group: Test-…`), key on `github.run_id` (unique per run), or omit `concurrency` in the callee and let the entry workflow own concurrency.
 
 Example (reusable `test.yml`):
 
@@ -631,7 +635,7 @@ concurrency:
 
 Recommended:
 
-- Use `actions/setup-node@v4` and enable `cache: npm`.
+- Use `actions/setup-node@v6` and enable `cache: npm`.
 - Use `npm ci` in CI (deterministic installs).
 - If you use a private registry, write `.npmrc` in the workflow from a token secret; never commit it.
 
@@ -703,7 +707,7 @@ Use a job `strategy.matrix` when you need confidence across environments.
 Recommended defaults for Node actions:
 
 - Use an OS matrix when platform behavior matters (path handling, shell quirks, file permissions, git behavior): `ubuntu-latest`, `windows-latest`, `macos-latest`.
-- Use a Node version matrix only when you explicitly support multiple runtimes. Most of our actions run as `node20`, so a Node matrix is usually unnecessary.
+- Use a Node version matrix only when you explicitly support multiple runtimes. Most of our actions run as `node24`, so a Node matrix is usually unnecessary. Make sure the CI Node version matches the action's `runs.using` value so tests exercise the same runtime that ships.
 
 Example OS matrix:
 
@@ -716,10 +720,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
       - run: npm test
@@ -861,7 +865,7 @@ outputs:
   result:
     description: Result value
 runs:
-  using: node20
+  using: node24
   main: dist/index.js
 branding:
   icon: terminal

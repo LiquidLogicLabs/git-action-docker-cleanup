@@ -5,7 +5,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow || 'Test' }}-${{ github.event.pull_request.number || github.ref || github.sha }}
+  # Explicit prefix (not ${{ github.workflow }}) so this reusable workflow does not
+  # share a concurrency group with the caller (ci.yml) — caller/callee on the same
+  # group with cancel-in-progress: true triggers GitHub's deadlock detection.
+  group: Test-${{ github.event.pull_request.number || github.ref || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -21,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
