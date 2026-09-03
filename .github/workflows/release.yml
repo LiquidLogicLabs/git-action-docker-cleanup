@@ -90,6 +90,10 @@ jobs:
         uses: LiquidLogicLabs/git-floating-version-tags-action@v2
         with:
           tag: ${{ github.event.inputs.tag || github.ref_name }}
+          # Without this the minor tag (vX.Y) is never moved: the action defaults it to
+          # false, so every repo left vX.Y frozen at an old release while the summary
+          # below claimed it had been created.
+          update-minor: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -113,5 +117,5 @@ jobs:
             echo "- **Status**: ⚠️ Pre-release (for testing)" >> $GITHUB_STEP_SUMMARY
           else
             echo "- **Status**: ✅ Stable release" >> $GITHUB_STEP_SUMMARY
-            echo "- **Version Tags Created**: \`@v${{ steps.version.outputs.major }}\`, \`@v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}\`, \`@latest\`, \`@${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Version Tags Created**: \`@v${{ steps.version.outputs.major }}\`, \`@v${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}\`, \`@${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           fi
