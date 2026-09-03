@@ -1,6 +1,10 @@
 [extend]
 useDefault = true
 
+# Suppresses ONLY the JSDoc example string that ncc inlines from @actions/core
+# into the generated bundle. condition = "AND" means both must match, so a real
+# secret in dist/index.js is still reported.
 [[allowlists]]
-description = "Committed ncc bundle. Sources are scanned directly; the bundle is generated."
+condition = "AND"
 paths = ['''^dist/index\.js(\.map)?$''']
+regexes = ['''abc123xyz456''']

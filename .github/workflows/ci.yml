@@ -58,6 +58,9 @@ jobs:
 
       - name: Scan for secrets
         run: |
+          # Fail loudly if the mount is not a git repo — gitleaks exits 0 in that case.
+          docker run --rm -v "$PWD:/repo" --entrypoint /bin/sh zricethezav/gitleaks:v8.30.1 \
+            -c 'test -e /repo/.git' || { echo "::error::gitleaks mount is not a git repo"; exit 1; }
           docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 \
             detect --source=/repo --no-banner --redact
 
