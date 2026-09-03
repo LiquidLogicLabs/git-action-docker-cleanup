@@ -85,9 +85,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create/Update Major, Minor, and Latest Version Tags
+      - name: Create/Update Major and Minor Version Tags
         if: steps.version.outputs.has-prerelease != 'true' && steps.version.outputs.is-valid == 'true'
-        uses: LiquidLogicLabs/git-floating-version-tags-action@v2
+        uses: LiquidLogicLabs/git-action-tag-floating-version@v2
         with:
           tag: ${{ github.event.inputs.tag || github.ref_name }}
           # Without this the minor tag (vX.Y) is never moved: the action defaults it to
