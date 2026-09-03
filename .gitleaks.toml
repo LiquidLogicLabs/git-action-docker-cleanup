@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Committed ncc bundle. Sources are scanned directly; the bundle is generated."
+paths = ['''^dist/index\.js(\.map)?$''']
