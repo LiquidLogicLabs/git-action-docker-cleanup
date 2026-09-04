@@ -774,8 +774,20 @@ Recommended release workflow properties (be consistent across repos):
 Floating tag updates (recommended when publishing actions):
 
 - Maintain a major floating tag (e.g., `v1`) pointing at the latest stable `v1.x.y`.
-- Optional: maintain a minor floating tag (e.g., `v1.2`) if consumers pin to minor.
-- Optional: maintain `latest` only if you have a clear policy for what it means.
+- Maintain a minor floating tag (e.g., `v1.2`) as well. This is not optional in this repo
+  set: every repo publishes one.
+- Pass `update-minor: true` explicitly to `git-action-tag-floating-version`. Do not rely on
+  the input's default — it was `false` before v2.0.4 and is `true` from v2.0.4 on, so what
+  you get depends on the version your pin resolves to. Being explicit is version-proof.
+  Leaving it unset is what left every repo's `vX.Y` frozen at an old release while the
+  release summary claimed the tag had just been updated.
+- Do **not** maintain a `latest` tag. Nothing in the release pipeline creates one — the
+  floating-tags action handles major and minor only — and no workflow in this repo set
+  references `@latest`; every reference pins a major tag. Stale `latest` tags previously
+  existed in 15 repos, pointing several releases back, and have been deleted.
+- Reference the action by its real repository name, `LiquidLogicLabs/git-action-tag-floating-version`.
+  The older `git-floating-version-tags-action` resolves only through GitHub's rename
+  redirect, which is a dependency you do not need.
 
 Consistency checklist (apply the same order across repos):
 
