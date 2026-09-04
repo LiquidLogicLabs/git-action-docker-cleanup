@@ -1,3 +1,12 @@
+## [2.0.5](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v2.0.4...v2.0.5) (2026-09-04)
+
+
+### Bug Fixes
+
+* encode every value interpolated into an API URL path ([eff7d29](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/eff7d297eb5888e895029a9059ef69178fcba1f1))
+
+
+
 ## [2.0.4](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v2.0.3...v2.0.4) (2026-09-04)
 
 
