@@ -223,3 +223,52 @@ export function expandPackages(
 
   return [...new Set(expanded)]; // Remove duplicates
 }
+
+/**
+ * Encode a value for use as a single path segment in an API URL.
+ *
+ * Interpolating a value straight into a path lets it redirect the request. Verified against
+ * WHATWG URL resolution, which is what fetch applies:
+ *
+ *   pkg "../../../user"  ->  /api/v1/packages/o/container/../../../user  =>  /api/v1/user
+ *   pkg ".."             ->  /api/v1/packages/o/container/..             =>  /api/v1/packages/o/
+ *
+ * This action issues DELETE against these paths (deleteTag on the Gitea, GHCR and Docker Hub
+ * providers, deleteManifest on the OCI providers), so a redirected request acts on the
+ * collection rather than on one item.
+ *
+ * encodeURIComponent is necessary but not sufficient: it does not encode dots, so a bare
+ * "." or ".." survives it unchanged and is then removed by dot-segment normalisation. Those
+ * two are refused outright rather than encoded, because no legitimate owner, package, tag
+ * or digest is named "." or "..".
+ */
+export function safeSegment(value: string | undefined, label: string): string {
+  if (value === undefined) {
+    // Interpolating an unset value used to put the literal "undefined" into the URL, which
+    // silently addresses a real (wrong) resource rather than failing.
+    throw new Error(`Refusing to build a request URL with an unset ${label}.`);
+  }
+  if (value === '.' || value === '..') {
+    throw new Error(
+      `Refusing to use ${JSON.stringify(value)} as a ${label}: it would redirect the request to a different endpoint.`
+    );
+  }
+  // ":" is left as-is. RFC 3986 lists it in `pchar`, so it is legal inside a path segment
+  // and cannot introduce one or escape one; encoding it would break OCI digest references
+  // ("sha256:<hex>"), which registries route on literally.
+  return encodeURIComponent(value).replace(/%3A/g, ':');
+}
+
+/**
+ * Encode a value that legitimately spans SEVERAL path segments — an OCI package name such
+ * as "owner/name/sub", where the separators are part of the name and must survive.
+ *
+ * Each segment is passed through safeSegment, so a "." or ".." anywhere in the path is
+ * refused and everything else is encoded within its own segment.
+ */
+export function safePath(value: string, label: string): string {
+  return value
+    .split('/')
+    .map((segment) => safeSegment(segment, label))
+    .join('/');
+}

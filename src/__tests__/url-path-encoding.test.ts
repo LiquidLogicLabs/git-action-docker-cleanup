@@ -137,12 +137,21 @@ describe('providers do not let a value escape its path segment', () => {
       expect(normalized(http.delete.mock.calls[0][0] as string)).toBe('/api/v1/packages/..%2F../container/pkg/v1');
     });
 
-    it('a hostile package name from the packages input cannot escape its segment', async () => {
+    // A package name is a MULTI-segment value ("owner/name/sub"), so it goes through
+    // safePath, which refuses any segment that is "." or "..". That is stronger than the
+    // encode-the-whole-thing outcome this originally asserted: nothing is sent at all.
+    it('refuses a package name from the packages input that contains a .. segment', async () => {
+      http.get.mockResolvedValue(ok({ id: 1 }) as never);
+      await expect(make().deleteTag('../../../user', 'v1')).rejects.toThrow(/redirect/i);
+      expect(http.delete).not.toHaveBeenCalled();
+    });
+
+    it('encodes what is inside a package name segment without splitting it', async () => {
       http.get.mockResolvedValue(ok({ id: 1 }) as never);
       http.delete.mockResolvedValue(ok() as never);
-      await make().deleteTag('../../../user', 'v1');
+      await make().deleteTag('pk g?x', 'v1');
       expect(normalized(http.delete.mock.calls[0][0] as string)).toBe(
-        '/api/v1/packages/test-owner/container/..%2F..%2F..%2Fuser/v1'
+        '/api/v1/packages/test-owner/container/pk%20g%3Fx/v1'
       );
     });
   });
@@ -159,12 +168,20 @@ describe('providers do not let a value escape its path segment', () => {
         return ok([{ id: 42, name: 'v', metadata: { container: { tags: ['v1'] } }, created_at: '2024-01-01' }]);
       }) as never);
 
-    it('stays on one version when the package name is a traversal', async () => {
+    // As above: the package name is multi-segment, so a ".." segment is refused outright
+    // rather than encoded — no request is issued at all.
+    it('refuses a package name that contains a .. segment', async () => {
+      wireGets();
+      await expect(make().deleteTag('../../../user', 'v1')).rejects.toThrow(/redirect/i);
+      expect(http.delete).not.toHaveBeenCalled();
+    });
+
+    it('encodes what is inside a package name segment without splitting it', async () => {
       wireGets();
       http.delete.mockResolvedValue(ok() as never);
-      await make().deleteTag('../../../user', 'v1');
+      await make().deleteTag('pk g?x', 'v1');
       expect(normalized(http.delete.mock.calls[0][0] as string)).toBe(
-        '/users/test-owner/packages/container/..%2F..%2F..%2Fuser/versions/42'
+        '/users/test-owner/packages/container/pk%20g%3Fx/versions/42'
       );
     });
 

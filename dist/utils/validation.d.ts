@@ -44,4 +44,31 @@ export declare function matchRegistryUrl(url: string, knownUrls: string[]): bool
  * Expand package names with wildcards/regex
  */
 export declare function expandPackages(packages: string[], allPackages: string[], useRegex: boolean): string[];
+/**
+ * Encode a value for use as a single path segment in an API URL.
+ *
+ * Interpolating a value straight into a path lets it redirect the request. Verified against
+ * WHATWG URL resolution, which is what fetch applies:
+ *
+ *   pkg "../../../user"  ->  /api/v1/packages/o/container/../../../user  =>  /api/v1/user
+ *   pkg ".."             ->  /api/v1/packages/o/container/..             =>  /api/v1/packages/o/
+ *
+ * This action issues DELETE against these paths (deleteTag on the Gitea, GHCR and Docker Hub
+ * providers, deleteManifest on the OCI providers), so a redirected request acts on the
+ * collection rather than on one item.
+ *
+ * encodeURIComponent is necessary but not sufficient: it does not encode dots, so a bare
+ * "." or ".." survives it unchanged and is then removed by dot-segment normalisation. Those
+ * two are refused outright rather than encoded, because no legitimate owner, package, tag
+ * or digest is named "." or "..".
+ */
+export declare function safeSegment(value: string | undefined, label: string): string;
+/**
+ * Encode a value that legitimately spans SEVERAL path segments — an OCI package name such
+ * as "owner/name/sub", where the separators are part of the name and must survive.
+ *
+ * Each segment is passed through safeSegment, so a "." or ".." anywhere in the path is
+ * refused and everything else is encoded within its own segment.
+ */
+export declare function safePath(value: string, label: string): string;
 //# sourceMappingURL=validation.d.ts.map

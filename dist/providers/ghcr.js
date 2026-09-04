@@ -37,6 +37,7 @@ exports.GHCRProvider = void 0;
 const core = __importStar(require("@actions/core"));
 const types_1 = require("../types");
 const base_1 = require("./base");
+const validation_1 = require("../utils/validation");
 /**
  * GitHub Container Registry provider
  * Uses GitHub Package API + OCI Registry V2 API
@@ -82,7 +83,7 @@ class GHCRProvider extends base_1.BaseProvider {
         if (this.ownerApiBase) {
             return this.ownerApiBase;
         }
-        const url = `${this.githubApiUrl}/users/${this.owner}`;
+        const url = `${this.githubApiUrl}/users/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}`;
         this.logger.debug(`[GHCR] getOwnerApiBase: Fetching owner type from ${url}`);
         const response = await this.httpClient.get(url, this.getAuthHeaders());
         this.ownerApiBase = response.data?.type === 'Organization' ? 'orgs' : 'users';
@@ -123,7 +124,7 @@ class GHCRProvider extends base_1.BaseProvider {
         const perPage = 100;
         const ownerApiBase = await this.getOwnerApiBase();
         while (true) {
-            const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
+            const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages?package_type=container&page=${page}&per_page=${perPage}`;
             this.logger.debug(`[GHCR] Fetching packages page ${page}`);
             try {
                 const response = await this.httpClient.get(url, this.getAuthHeaders());
@@ -213,7 +214,7 @@ class GHCRProvider extends base_1.BaseProvider {
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[GHCR] getPackageVersions: Extracted package name: ${packageNameOnly} (from ${packageName})`);
         const ownerApiBase = await this.getOwnerApiBase();
-        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/versions`;
         this.logger.debug(`[GHCR] getPackageVersions: Fetching versions from ${url}`);
         let response;
         try {
@@ -248,7 +249,7 @@ class GHCRProvider extends base_1.BaseProvider {
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[GHCR] listTags: Extracted package name: ${packageNameOnly}`);
         const ownerApiBase = await this.getOwnerApiBase();
-        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/versions`;
         this.logger.debug(`[GHCR] listTags: Fetching versions from ${url}`);
         let response;
         try {
@@ -316,7 +317,7 @@ class GHCRProvider extends base_1.BaseProvider {
         }
         const packageNameOnly = this.extractPackageName(packageName);
         const ownerApiBase = await this.getOwnerApiBase();
-        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/versions/${(0, validation_1.safeSegment)(String(version.id), 'package version id')}`;
         this.logger.debug(`[GHCR] Deleting version ${version.id} via ${ownerApiBase} endpoint`);
         try {
             const response = await this.httpClient.delete(url, this.getAuthHeaders());

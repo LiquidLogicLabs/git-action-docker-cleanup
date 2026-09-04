@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BaseProvider = void 0;
+const validation_1 = require("../utils/validation");
 /**
  * Base provider class with common OCI Registry V2 API utilities
  */
@@ -37,25 +38,25 @@ class BaseProvider {
      * Get manifest URL
      */
     getManifestUrl(packageName, reference) {
-        return `${this.getRegistryApiUrl()}/${packageName}/manifests/${reference}`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/manifests/${(0, validation_1.safeSegment)(reference, 'manifest reference')}`;
     }
     /**
      * Get tags URL
      */
     getTagsUrl(packageName) {
-        return `${this.getRegistryApiUrl()}/${packageName}/tags/list`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/tags/list`;
     }
     /**
      * Get referrers URL (OCI referrers API)
      */
     getReferrersUrl(packageName, digest) {
-        return `${this.getRegistryApiUrl()}/${packageName}/referrers/${digest}`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/referrers/${(0, validation_1.safeSegment)(digest, 'digest')}`;
     }
     /**
      * Get blob URL
      */
     getBlobUrl(packageName, digest) {
-        return `${this.getRegistryApiUrl()}/${packageName}/blobs/${digest}`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/blobs/${(0, validation_1.safeSegment)(digest, 'digest')}`;
     }
     /**
      * Parse OCI manifest

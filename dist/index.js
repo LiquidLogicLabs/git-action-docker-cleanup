@@ -33539,12 +33539,13 @@ exports.Logger = Logger;
 /***/ }),
 
 /***/ 1789:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BaseProvider = void 0;
+const validation_1 = __nccwpck_require__(8634);
 /**
  * Base provider class with common OCI Registry V2 API utilities
  */
@@ -33581,25 +33582,25 @@ class BaseProvider {
      * Get manifest URL
      */
     getManifestUrl(packageName, reference) {
-        return `${this.getRegistryApiUrl()}/${packageName}/manifests/${reference}`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/manifests/${(0, validation_1.safeSegment)(reference, 'manifest reference')}`;
     }
     /**
      * Get tags URL
      */
     getTagsUrl(packageName) {
-        return `${this.getRegistryApiUrl()}/${packageName}/tags/list`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/tags/list`;
     }
     /**
      * Get referrers URL (OCI referrers API)
      */
     getReferrersUrl(packageName, digest) {
-        return `${this.getRegistryApiUrl()}/${packageName}/referrers/${digest}`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/referrers/${(0, validation_1.safeSegment)(digest, 'digest')}`;
     }
     /**
      * Get blob URL
      */
     getBlobUrl(packageName, digest) {
-        return `${this.getRegistryApiUrl()}/${packageName}/blobs/${digest}`;
+        return `${this.getRegistryApiUrl()}/${(0, validation_1.safePath)(packageName, 'package name')}/blobs/${(0, validation_1.safeSegment)(digest, 'digest')}`;
     }
     /**
      * Parse OCI manifest
@@ -34120,6 +34121,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DockerHubProvider = void 0;
 const types_1 = __nccwpck_require__(6141);
 const base_1 = __nccwpck_require__(1789);
+const validation_1 = __nccwpck_require__(8634);
 /**
  * Docker Hub provider
  * Uses Docker Hub API exclusively (no OCI Registry V2 API)
@@ -34198,7 +34200,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         const pageSize = 100;
         const token = await this.getHubToken();
         while (true) {
-            const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
+            const url = `${this.hubApiUrl}/repositories/${(0, validation_1.safeSegment)(this.username, 'Docker Hub username')}/?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
             const response = await this.httpClient.get(url, { Authorization: `JWT ${token}` });
             const results = response.data?.results || [];
@@ -34275,7 +34277,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         const pageSize = 100;
         const tags = [];
         while (true) {
-            const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
+            const url = `${this.hubApiUrl}/repositories/${(0, validation_1.safeSegment)(namespace, 'Docker Hub namespace')}/${(0, validation_1.safePath)(repo, 'repository name')}/tags?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);
             const response = await this.httpClient.get(url, { Authorization: `JWT ${token}` });
             const results = response.data?.results || [];
@@ -34307,7 +34309,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         }
         const { namespace, repo } = this.getRepositoryParts(packageName);
         const token = await this.getHubToken();
-        const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags/${tag}/`;
+        const url = `${this.hubApiUrl}/repositories/${(0, validation_1.safeSegment)(namespace, 'Docker Hub namespace')}/${(0, validation_1.safePath)(repo, 'repository name')}/tags/${(0, validation_1.safeSegment)(tag, 'tag')}/`;
         this.logger.debug(`[DockerHub] Deleting tag via Hub API: ${url}`);
         await this.httpClient.delete(url, { Authorization: `JWT ${token}` });
         this.logger.info(`Deleted tag ${tag} from package ${packageName}`);
@@ -34770,6 +34772,7 @@ exports.GHCRProvider = void 0;
 const core = __importStar(__nccwpck_require__(7484));
 const types_1 = __nccwpck_require__(6141);
 const base_1 = __nccwpck_require__(1789);
+const validation_1 = __nccwpck_require__(8634);
 /**
  * GitHub Container Registry provider
  * Uses GitHub Package API + OCI Registry V2 API
@@ -34815,7 +34818,7 @@ class GHCRProvider extends base_1.BaseProvider {
         if (this.ownerApiBase) {
             return this.ownerApiBase;
         }
-        const url = `${this.githubApiUrl}/users/${this.owner}`;
+        const url = `${this.githubApiUrl}/users/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}`;
         this.logger.debug(`[GHCR] getOwnerApiBase: Fetching owner type from ${url}`);
         const response = await this.httpClient.get(url, this.getAuthHeaders());
         this.ownerApiBase = response.data?.type === 'Organization' ? 'orgs' : 'users';
@@ -34856,7 +34859,7 @@ class GHCRProvider extends base_1.BaseProvider {
         const perPage = 100;
         const ownerApiBase = await this.getOwnerApiBase();
         while (true) {
-            const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages?package_type=container&page=${page}&per_page=${perPage}`;
+            const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages?package_type=container&page=${page}&per_page=${perPage}`;
             this.logger.debug(`[GHCR] Fetching packages page ${page}`);
             try {
                 const response = await this.httpClient.get(url, this.getAuthHeaders());
@@ -34946,7 +34949,7 @@ class GHCRProvider extends base_1.BaseProvider {
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[GHCR] getPackageVersions: Extracted package name: ${packageNameOnly} (from ${packageName})`);
         const ownerApiBase = await this.getOwnerApiBase();
-        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/versions`;
         this.logger.debug(`[GHCR] getPackageVersions: Fetching versions from ${url}`);
         let response;
         try {
@@ -34981,7 +34984,7 @@ class GHCRProvider extends base_1.BaseProvider {
         const packageNameOnly = this.extractPackageName(packageName);
         this.logger.debug(`[GHCR] listTags: Extracted package name: ${packageNameOnly}`);
         const ownerApiBase = await this.getOwnerApiBase();
-        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions`;
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/versions`;
         this.logger.debug(`[GHCR] listTags: Fetching versions from ${url}`);
         let response;
         try {
@@ -35049,7 +35052,7 @@ class GHCRProvider extends base_1.BaseProvider {
         }
         const packageNameOnly = this.extractPackageName(packageName);
         const ownerApiBase = await this.getOwnerApiBase();
-        const url = `${this.githubApiUrl}/${ownerApiBase}/${this.owner}/packages/container/${packageNameOnly}/versions/${version.id}`;
+        const url = `${this.githubApiUrl}/${ownerApiBase}/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/packages/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/versions/${(0, validation_1.safeSegment)(String(version.id), 'package version id')}`;
         this.logger.debug(`[GHCR] Deleting version ${version.id} via ${ownerApiBase} endpoint`);
         try {
             const response = await this.httpClient.delete(url, this.getAuthHeaders());
@@ -35172,6 +35175,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.GiteaProvider = void 0;
 const types_1 = __nccwpck_require__(6141);
 const base_1 = __nccwpck_require__(1789);
+const validation_1 = __nccwpck_require__(8634);
 /**
  * Gitea Container Registry provider
  * Uses Gitea Package API + OCI Registry V2 API
@@ -35254,7 +35258,7 @@ class GiteaProvider extends base_1.BaseProvider {
         let page = 1;
         const limit = 50;
         while (true) {
-            const url = `${this.giteaApiUrl}/packages/${this.owner}?type=container&page=${page}&limit=${limit}`;
+            const url = `${this.giteaApiUrl}/packages/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}?type=container&page=${page}&limit=${limit}`;
             this.logger.debug(`[Gitea] listPackages: Fetching page ${page} from ${url}`);
             try {
                 const response = await this.httpClient.get(url, this.getAuthHeaders());
@@ -35342,7 +35346,7 @@ class GiteaProvider extends base_1.BaseProvider {
         const limit = 50;
         try {
             while (true) {
-                const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
+                const url = `${this.giteaApiUrl}/packages/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}?page=${page}&limit=${limit}`;
                 this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);
                 const response = await this.httpClient.get(url, this.getAuthHeaders());
                 this.logger.debug(`[Gitea] getPackageVersions: Response status ${response.status}, versions: ${response.data?.length || 0}`);
@@ -35430,7 +35434,7 @@ class GiteaProvider extends base_1.BaseProvider {
         }
         try {
             const packageNameOnly = this.extractPackageName(packageName);
-            const deleteUrl = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}/${tag}`;
+            const deleteUrl = `${this.giteaApiUrl}/packages/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/${(0, validation_1.safeSegment)(tag, 'tag')}`;
             this.logger.debug(`[Gitea] Deleting version ${tag} via Package API: ${deleteUrl}`);
             await this.httpClient.delete(deleteUrl, this.getAuthHeaders());
             this.logger.info(`Deleted tag ${tag} from package ${packageName}`);
@@ -35857,6 +35861,8 @@ exports.normalizeRegistryUrl = normalizeRegistryUrl;
 exports.extractHostname = extractHostname;
 exports.matchRegistryUrl = matchRegistryUrl;
 exports.expandPackages = expandPackages;
+exports.safeSegment = safeSegment;
+exports.safePath = safePath;
 /**
  * Reject a value that `docker` would read as an OPTION rather than as a value.
  *
@@ -36034,6 +36040,51 @@ function expandPackages(packages, allPackages, useRegex) {
         }
     }
     return [...new Set(expanded)]; // Remove duplicates
+}
+/**
+ * Encode a value for use as a single path segment in an API URL.
+ *
+ * Interpolating a value straight into a path lets it redirect the request. Verified against
+ * WHATWG URL resolution, which is what fetch applies:
+ *
+ *   pkg "../../../user"  ->  /api/v1/packages/o/container/../../../user  =>  /api/v1/user
+ *   pkg ".."             ->  /api/v1/packages/o/container/..             =>  /api/v1/packages/o/
+ *
+ * This action issues DELETE against these paths (deleteTag on the Gitea, GHCR and Docker Hub
+ * providers, deleteManifest on the OCI providers), so a redirected request acts on the
+ * collection rather than on one item.
+ *
+ * encodeURIComponent is necessary but not sufficient: it does not encode dots, so a bare
+ * "." or ".." survives it unchanged and is then removed by dot-segment normalisation. Those
+ * two are refused outright rather than encoded, because no legitimate owner, package, tag
+ * or digest is named "." or "..".
+ */
+function safeSegment(value, label) {
+    if (value === undefined) {
+        // Interpolating an unset value used to put the literal "undefined" into the URL, which
+        // silently addresses a real (wrong) resource rather than failing.
+        throw new Error(`Refusing to build a request URL with an unset ${label}.`);
+    }
+    if (value === '.' || value === '..') {
+        throw new Error(`Refusing to use ${JSON.stringify(value)} as a ${label}: it would redirect the request to a different endpoint.`);
+    }
+    // ":" is left as-is. RFC 3986 lists it in `pchar`, so it is legal inside a path segment
+    // and cannot introduce one or escape one; encoding it would break OCI digest references
+    // ("sha256:<hex>"), which registries route on literally.
+    return encodeURIComponent(value).replace(/%3A/g, ':');
+}
+/**
+ * Encode a value that legitimately spans SEVERAL path segments — an OCI package name such
+ * as "owner/name/sub", where the separators are part of the name and must survive.
+ *
+ * Each segment is passed through safeSegment, so a "." or ".." anywhere in the path is
+ * refused and everything else is encoded within its own segment.
+ */
+function safePath(value, label) {
+    return value
+        .split('/')
+        .map((segment) => safeSegment(segment, label))
+        .join('/');
 }
 
 

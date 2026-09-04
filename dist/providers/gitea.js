@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GiteaProvider = void 0;
 const types_1 = require("../types");
 const base_1 = require("./base");
+const validation_1 = require("../utils/validation");
 /**
  * Gitea Container Registry provider
  * Uses Gitea Package API + OCI Registry V2 API
@@ -85,7 +86,7 @@ class GiteaProvider extends base_1.BaseProvider {
         let page = 1;
         const limit = 50;
         while (true) {
-            const url = `${this.giteaApiUrl}/packages/${this.owner}?type=container&page=${page}&limit=${limit}`;
+            const url = `${this.giteaApiUrl}/packages/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}?type=container&page=${page}&limit=${limit}`;
             this.logger.debug(`[Gitea] listPackages: Fetching page ${page} from ${url}`);
             try {
                 const response = await this.httpClient.get(url, this.getAuthHeaders());
@@ -173,7 +174,7 @@ class GiteaProvider extends base_1.BaseProvider {
         const limit = 50;
         try {
             while (true) {
-                const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
+                const url = `${this.giteaApiUrl}/packages/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}?page=${page}&limit=${limit}`;
                 this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);
                 const response = await this.httpClient.get(url, this.getAuthHeaders());
                 this.logger.debug(`[Gitea] getPackageVersions: Response status ${response.status}, versions: ${response.data?.length || 0}`);
@@ -261,7 +262,7 @@ class GiteaProvider extends base_1.BaseProvider {
         }
         try {
             const packageNameOnly = this.extractPackageName(packageName);
-            const deleteUrl = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}/${tag}`;
+            const deleteUrl = `${this.giteaApiUrl}/packages/${(0, validation_1.safeSegment)(this.owner, 'repository owner')}/container/${(0, validation_1.safePath)(packageNameOnly, 'package name')}/${(0, validation_1.safeSegment)(tag, 'tag')}`;
             this.logger.debug(`[Gitea] Deleting version ${tag} via Package API: ${deleteUrl}`);
             await this.httpClient.delete(deleteUrl, this.getAuthHeaders());
             this.logger.info(`Deleted tag ${tag} from package ${packageName}`);

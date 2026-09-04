@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { Logger } from '../logger';
 import { HttpClient } from '../utils/api';
+import { safeSegment, safePath } from '../utils/validation';
 
 /**
  * Base provider class with common OCI Registry V2 API utilities
@@ -52,28 +53,28 @@ export abstract class BaseProvider implements IRegistryProvider {
    * Get manifest URL
    */
   protected getManifestUrl(packageName: string, reference: string): string {
-    return `${this.getRegistryApiUrl()}/${packageName}/manifests/${reference}`;
+    return `${this.getRegistryApiUrl()}/${safePath(packageName, 'package name')}/manifests/${safeSegment(reference, 'manifest reference')}`;
   }
 
   /**
    * Get tags URL
    */
   protected getTagsUrl(packageName: string): string {
-    return `${this.getRegistryApiUrl()}/${packageName}/tags/list`;
+    return `${this.getRegistryApiUrl()}/${safePath(packageName, 'package name')}/tags/list`;
   }
 
   /**
    * Get referrers URL (OCI referrers API)
    */
   protected getReferrersUrl(packageName: string, digest: string): string {
-    return `${this.getRegistryApiUrl()}/${packageName}/referrers/${digest}`;
+    return `${this.getRegistryApiUrl()}/${safePath(packageName, 'package name')}/referrers/${safeSegment(digest, 'digest')}`;
   }
 
   /**
    * Get blob URL
    */
   protected getBlobUrl(packageName: string, digest: string): string {
-    return `${this.getRegistryApiUrl()}/${packageName}/blobs/${digest}`;
+    return `${this.getRegistryApiUrl()}/${safePath(packageName, 'package name')}/blobs/${safeSegment(digest, 'digest')}`;
   }
 
   /**

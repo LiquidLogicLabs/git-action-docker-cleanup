@@ -11,6 +11,7 @@ import {
 import { BaseProvider } from './base';
 import { Logger } from '../logger';
 import { HttpClient } from '../utils/api';
+import { safeSegment, safePath } from '../utils/validation';
 
 /**
  * Gitea Container Registry provider
@@ -109,7 +110,7 @@ export class GiteaProvider extends BaseProvider {
     const limit = 50;
 
     while (true) {
-      const url = `${this.giteaApiUrl}/packages/${this.owner}?type=container&page=${page}&limit=${limit}`;
+      const url = `${this.giteaApiUrl}/packages/${safeSegment(this.owner, 'repository owner')}?type=container&page=${page}&limit=${limit}`;
       this.logger.debug(`[Gitea] listPackages: Fetching page ${page} from ${url}`);
       
       try {
@@ -219,7 +220,7 @@ export class GiteaProvider extends BaseProvider {
     
     try {
       while (true) {
-        const url = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}?page=${page}&limit=${limit}`;
+        const url = `${this.giteaApiUrl}/packages/${safeSegment(this.owner, 'repository owner')}/container/${safePath(packageNameOnly, 'package name')}?page=${page}&limit=${limit}`;
         this.logger.debug(`[Gitea] getPackageVersions: Fetching versions page ${page} from ${url}`);
         
         const response = await this.httpClient.get<Array<{
@@ -329,7 +330,7 @@ export class GiteaProvider extends BaseProvider {
 
     try {
       const packageNameOnly = this.extractPackageName(packageName);
-      const deleteUrl = `${this.giteaApiUrl}/packages/${this.owner}/container/${packageNameOnly}/${tag}`;
+      const deleteUrl = `${this.giteaApiUrl}/packages/${safeSegment(this.owner, 'repository owner')}/container/${safePath(packageNameOnly, 'package name')}/${safeSegment(tag, 'tag')}`;
       this.logger.debug(`[Gitea] Deleting version ${tag} via Package API: ${deleteUrl}`);
       await this.httpClient.delete(deleteUrl, this.getAuthHeaders());
       this.logger.info(`Deleted tag ${tag} from package ${packageName}`);

@@ -10,6 +10,7 @@ import {
 import { BaseProvider } from './base';
 import { Logger } from '../logger';
 import { HttpClient } from '../utils/api';
+import { safeSegment, safePath } from '../utils/validation';
 
 /**
  * Docker Hub provider
@@ -111,7 +112,7 @@ export class DockerHubProvider extends BaseProvider {
     const token = await this.getHubToken();
 
     while (true) {
-      const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
+      const url = `${this.hubApiUrl}/repositories/${safeSegment(this.username, 'Docker Hub username')}/?page=${page}&page_size=${pageSize}`;
       this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
       const response = await this.httpClient.get<{
         results: Array<{
@@ -210,7 +211,7 @@ export class DockerHubProvider extends BaseProvider {
     const tags: Tag[] = [];
 
     while (true) {
-      const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
+      const url = `${this.hubApiUrl}/repositories/${safeSegment(namespace, 'Docker Hub namespace')}/${safePath(repo, 'repository name')}/tags?page=${page}&page_size=${pageSize}`;
       this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);
       const response = await this.httpClient.get<{
         results: Array<{
@@ -256,7 +257,7 @@ export class DockerHubProvider extends BaseProvider {
 
     const { namespace, repo } = this.getRepositoryParts(packageName);
     const token = await this.getHubToken();
-    const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags/${tag}/`;
+    const url = `${this.hubApiUrl}/repositories/${safeSegment(namespace, 'Docker Hub namespace')}/${safePath(repo, 'repository name')}/tags/${safeSegment(tag, 'tag')}/`;
     this.logger.debug(`[DockerHub] Deleting tag via Hub API: ${url}`);
     await this.httpClient.delete(url, { Authorization: `JWT ${token}` });
     this.logger.info(`Deleted tag ${tag} from package ${packageName}`);

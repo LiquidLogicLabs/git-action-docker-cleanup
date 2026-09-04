@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DockerHubProvider = void 0;
 const types_1 = require("../types");
 const base_1 = require("./base");
+const validation_1 = require("../utils/validation");
 /**
  * Docker Hub provider
  * Uses Docker Hub API exclusively (no OCI Registry V2 API)
@@ -81,7 +82,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         const pageSize = 100;
         const token = await this.getHubToken();
         while (true) {
-            const url = `${this.hubApiUrl}/repositories/${this.username}/?page=${page}&page_size=${pageSize}`;
+            const url = `${this.hubApiUrl}/repositories/${(0, validation_1.safeSegment)(this.username, 'Docker Hub username')}/?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching repositories page ${page} from ${url}`);
             const response = await this.httpClient.get(url, { Authorization: `JWT ${token}` });
             const results = response.data?.results || [];
@@ -158,7 +159,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         const pageSize = 100;
         const tags = [];
         while (true) {
-            const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags?page=${page}&page_size=${pageSize}`;
+            const url = `${this.hubApiUrl}/repositories/${(0, validation_1.safeSegment)(namespace, 'Docker Hub namespace')}/${(0, validation_1.safePath)(repo, 'repository name')}/tags?page=${page}&page_size=${pageSize}`;
             this.logger.debug(`[DockerHub] Fetching tags page ${page} from Hub API: ${url}`);
             const response = await this.httpClient.get(url, { Authorization: `JWT ${token}` });
             const results = response.data?.results || [];
@@ -190,7 +191,7 @@ class DockerHubProvider extends base_1.BaseProvider {
         }
         const { namespace, repo } = this.getRepositoryParts(packageName);
         const token = await this.getHubToken();
-        const url = `${this.hubApiUrl}/repositories/${namespace}/${repo}/tags/${tag}/`;
+        const url = `${this.hubApiUrl}/repositories/${(0, validation_1.safeSegment)(namespace, 'Docker Hub namespace')}/${(0, validation_1.safePath)(repo, 'repository name')}/tags/${(0, validation_1.safeSegment)(tag, 'tag')}/`;
         this.logger.debug(`[DockerHub] Deleting tag via Hub API: ${url}`);
         await this.httpClient.delete(url, { Authorization: `JWT ${token}` });
         this.logger.info(`Deleted tag ${tag} from package ${packageName}`);
