@@ -771,6 +771,15 @@ Recommended release workflow properties (be consistent across repos):
   - Generate release notes (from `CHANGELOG.md` or commit history).
   - Attach relevant artifacts when applicable.
 
+Workflow location:
+
+- Keep exactly one workflow directory, `.github/workflows/`. Gitea Actions reads it; a
+  second forge-specific copy is not required and drifts, because no linter or scanner in
+  this toolchain reads `.gitea/workflows/`.
+- Adding `.gitea`, `.forgejo`, `.circleci`, `.drone` or `.woodpecker` requires an approved
+  reason recorded in the repo, and the `Reject duplicate forge workflow directories` CI step
+  must be amended to allow it deliberately.
+
 Floating tag updates (recommended when publishing actions):
 
 - Maintain a major floating tag (e.g., `v1`) pointing at the latest stable `v1.x.y`.

@@ -49,6 +49,26 @@ jobs:
         continue-on-error: true
         run: npm run format:check
 
+      - name: Reject duplicate forge workflow directories
+        run: |
+          # Gitea Actions runs .github/workflows/ — verified against a Gitea-hosted repo in
+          # this set that has no .gitea/ directory and whose jobs run there successfully.
+          # A second copy is not needed, and the one that existed had drifted badly: it had
+          # missed every CI gate added to .github/, and all the defects found in this repo
+          # set lived in it, because it is the copy no linter or scanner reads.
+          # If a forge genuinely needs its own workflow, get that approved and add the
+          # directory to the allowlist below with the reason.
+          found=""
+          for d in .gitea .forgejo .circleci .drone .woodpecker; do
+            [ -e "$d" ] && found="$found $d"
+          done
+          if [ -n "$found" ]; then
+            echo "::error::Duplicate forge workflow directory present:$found"
+            echo "::error::.github/workflows/ is the single source for every forge."
+            echo "::error::If this is deliberate, record the approved reason and amend this check."
+            exit 1
+          fi
+          echo "No duplicate forge workflow directories."
       - name: Lint workflows
         # Scoped to ci.yml in Phase 0; Phase 1 fixes release.yml/e2e-tests.yml
         # shellcheck findings and removes the scoping.
