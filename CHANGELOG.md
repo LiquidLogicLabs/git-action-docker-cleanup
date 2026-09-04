@@ -1,3 +1,13 @@
+## [2.0.4](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v2.0.3...v2.0.4) (2026-09-04)
+
+
+### Bug Fixes
+
+* **lint:** quote eslint glob so all of src/ is linted ([baa072a](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/baa072ab4cc24c4ed671f3d9b3b037ef78939aab))
+* refuse action inputs that docker would read as options ([56eeadc](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/56eeadcda1839bcccc7dc8f5b907ce9c2c2b7ad4))
+
+
+
 ## [2.0.3](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v2.0.2...v2.0.3) (2026-07-05)
 
 
