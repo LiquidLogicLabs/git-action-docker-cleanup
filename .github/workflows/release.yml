@@ -160,3 +160,73 @@ jobs:
               echo "- **Version Tags Created**: \`@v${Z_VERSION_OUTPUTS_MAJOR}\`, \`@v${Z_VERSION_OUTPUTS_MAJOR}.${Z_VERSION_OUTPUTS_MINOR}\`, \`@${Z_REF_NAME}\`"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  verify-release:
+    # A tag push is what TRIGGERS this workflow, so the tag necessarily exists before the
+    # release can even be attempted. Every failure in between therefore leaves a public
+    # orphan tag behind, and nothing else in CI looks for one. 34 accumulated across these
+    # repos before this job existed, from two observed modes: the release job failing
+    # outright (tag-info v2.0.7, run 33896069051), and the release job being SKIPPED
+    # because e2e failed (tag-create-update v2.0.5, run 33798903081). Both runs were red
+    # at the time and the tag still survived, so reporting alone does not fix this.
+    # This job makes a release atomic: either the tag and its release both exist, or
+    # neither does.
+    #
+    # Scoped to `push` deliberately. On a push the tag was created by this very run, so
+    # rolling it back only undoes this run's own side effect. On workflow_dispatch the tag
+    # pre-existed and is not this run's to delete.
+    #
+    # Deleting a tag raises a `delete` event, not `push`, so this cannot re-trigger the
+    # workflow.
+    needs: [release]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # deletes the orphan tag
+    steps:
+      - name: Checkout
+        # zizmor: ignore[artipacked] — the rollback step below deletes the orphan tag
+        # over the remote using these persisted credentials.
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+
+      - name: Tag must have a release, or be rolled back
+        env:
+          Z_TAG: ${{ github.ref_name }}
+          Z_REPO: ${{ github.repository }}
+          Z_SERVER_URL: ${{ github.server_url }}
+          Z_API_URL: ${{ github.api_url }}
+          Z_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -u
+          # GitHub serves its API from api.github.com; Gitea serves it from <origin>/api/v1.
+          # Both implement GET /repos/{owner}/{repo}/releases/tags/{tag}.
+          if [ "${Z_SERVER_URL}" = "https://github.com" ]; then
+            api="${Z_API_URL}"
+          else
+            api="${Z_SERVER_URL}/api/v1"
+          fi
+
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: token ${Z_TOKEN}" \
+            -H "Accept: application/json" \
+            "${api}/repos/${Z_REPO}/releases/tags/${Z_TAG}" || echo "000")
+
+          if [ "${code}" = "200" ]; then
+            echo "Release exists for ${Z_TAG}."
+            exit 0
+          fi
+
+          # Only a definitive 404 proves the release is absent. On any other outcome the
+          # state is unknown, and deleting a tag on a guess is worse than leaving it.
+          if [ "${code}" != "404" ]; then
+            echo "::error::Could not determine whether ${Z_TAG} has a release (HTTP ${code}). Leaving the tag in place."
+            exit 1
+          fi
+
+          echo "::error::${Z_TAG} was pushed but no release was created. Rolling the tag back."
+          git push origin ":refs/tags/${Z_TAG}"
+          echo "Deleted ${Z_TAG}. Fix the failure above, then re-tag the existing commit:"
+          echo "  git tag ${Z_TAG} <commit> && git push origin ${Z_TAG}"
+          exit 1
