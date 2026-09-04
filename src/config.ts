@@ -8,6 +8,8 @@ import {
   validateProviderConfig,
   validateCleanupConfig,
   validateRegistryType,
+  assertNotOptionLike,
+  normalizeRegistryUrl,
 } from './utils/validation';
 import { Logger } from './logger';
 
@@ -120,6 +122,20 @@ export function getInputs(): ParsedInputs {
 
   validateProviderConfig(providerConfig);
   validateCleanupConfig(cleanupConfig);
+
+  // Argument-injection guard, at the entry point. These are the inputs that reach
+  // `docker`'s argv (see DockerCLIProvider): registry-url and package/packages become the
+  // image name passed to `docker image rm` / `docker manifest inspect`, and
+  // registry-username is passed to `docker login`. A leading "-" would be read by docker's
+  // own option parser as an option, whatever the argv array does about the shell.
+  // registry-url is checked AFTER normalisation because the provider strips "https://".
+  if (registryUrl) {
+    assertNotOptionLike(normalizeRegistryUrl(registryUrl), 'registry URL');
+  }
+  assertNotOptionLike(registryUsername || undefined, 'registry username');
+  for (const pkg of packages) {
+    assertNotOptionLike(pkg, 'package name');
+  }
 
   return {
     providerConfig,

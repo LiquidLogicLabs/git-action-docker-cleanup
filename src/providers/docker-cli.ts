@@ -10,6 +10,7 @@ import {
 import { IRegistryProvider } from '../types';
 import { Logger } from '../logger';
 import { HttpClient } from '../utils/api';
+import { assertNotOptionLike } from '../utils/validation';
 
 /**
  * Docker CLI provider
@@ -37,6 +38,9 @@ export class DockerCLIProvider implements IRegistryProvider {
     }
 
     this.registryUrl = this.normalizeRegistryUrl(config.registryUrl);
+    // After normalisation: normalizeRegistryUrl() strips "https://", so guarding the raw
+    // input would let `https://--config=/tmp/evil` through as `--config=/tmp/evil`.
+    assertNotOptionLike(this.registryUrl, 'registry URL');
   }
 
   private normalizeRegistryUrl(url: string): string {
@@ -46,6 +50,8 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   private getImageName(packageName: string, tag?: string): string {
+    assertNotOptionLike(packageName, 'package name');
+    assertNotOptionLike(tag, 'tag');
     const imageName = `${this.registryUrl}/${packageName}`;
     return tag ? `${imageName}:${tag}` : imageName;
   }
@@ -112,6 +118,7 @@ export class DockerCLIProvider implements IRegistryProvider {
     // If credentials are provided, we'll login to the registry (useful for pulling images or if Docker has cached credentials)
     const username = this.config.username;
     const password = this.config.password || this.config.token;
+    assertNotOptionLike(username, 'registry username');
 
     if (username && password) {
       this.logger.debug(`[DockerCLI] authenticate: Credentials provided, attempting docker login`);
@@ -193,6 +200,7 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async getPackageManifests(packageName: string): Promise<Manifest[]> {
+    assertNotOptionLike(packageName, 'package name');
     this.logger.debug(`[DockerCLI] Getting all manifests for package: ${packageName} from local Docker images`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
@@ -221,6 +229,7 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async listTags(packageName: string): Promise<Tag[]> {
+    assertNotOptionLike(packageName, 'package name');
     this.logger.debug(`[DockerCLI] Listing all tags for package: ${packageName} from local Docker images`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
@@ -273,6 +282,8 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async deleteTag(packageName: string, tag: string, _tagsBeingDeleted?: string[]): Promise<void> {
+    assertNotOptionLike(packageName, 'package name');
+    assertNotOptionLike(tag, 'tag');
     this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
@@ -305,6 +316,8 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async getManifest(packageName: string, reference: string): Promise<Manifest> {
+    assertNotOptionLike(packageName, 'package name');
+    assertNotOptionLike(reference, 'manifest reference');
     this.logger.debug(`[DockerCLI] Inspecting local Docker image manifest: ${packageName}:${reference}`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
@@ -389,6 +402,8 @@ export class DockerCLIProvider implements IRegistryProvider {
   }
 
   async deleteManifest(packageName: string, digest: string): Promise<void> {
+    assertNotOptionLike(packageName, 'package name');
+    assertNotOptionLike(digest, 'manifest digest');
     this.logger.debug(`[DockerCLI] Deleting local Docker images matching manifest digest: ${digest} from package: ${packageName}`);
     // Authentication is optional for local operations
     if (!this.authenticated) {
@@ -414,6 +429,7 @@ export class DockerCLIProvider implements IRegistryProvider {
     for (const image of images) {
       if (image.Repository === imageName && image.ID.startsWith(digestShort)) {
         const fullImageName = `${image.Repository}:${image.Tag}`;
+        assertNotOptionLike(fullImageName, 'image name');
         this.logger.debug(`[DockerCLI] deleteManifest: Found matching image ${fullImageName} (ID: ${image.ID})`);
         try {
           this.logger.debug(`[DockerCLI] deleteManifest: Running 'docker image rm ${fullImageName}'`);

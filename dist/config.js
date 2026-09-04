@@ -126,6 +126,19 @@ function getInputs() {
     };
     (0, validation_1.validateProviderConfig)(providerConfig);
     (0, validation_1.validateCleanupConfig)(cleanupConfig);
+    // Argument-injection guard, at the entry point. These are the inputs that reach
+    // `docker`'s argv (see DockerCLIProvider): registry-url and package/packages become the
+    // image name passed to `docker image rm` / `docker manifest inspect`, and
+    // registry-username is passed to `docker login`. A leading "-" would be read by docker's
+    // own option parser as an option, whatever the argv array does about the shell.
+    // registry-url is checked AFTER normalisation because the provider strips "https://".
+    if (registryUrl) {
+        (0, validation_1.assertNotOptionLike)((0, validation_1.normalizeRegistryUrl)(registryUrl), 'registry URL');
+    }
+    (0, validation_1.assertNotOptionLike)(registryUsername || undefined, 'registry username');
+    for (const pkg of packages) {
+        (0, validation_1.assertNotOptionLike)(pkg, 'package name');
+    }
     return {
         providerConfig,
         cleanupConfig,

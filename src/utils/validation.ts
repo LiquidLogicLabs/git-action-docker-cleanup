@@ -1,6 +1,27 @@
 import { RegistryType, ProviderConfig, CleanupConfig } from '../types';
 
 /**
+ * Reject a value that `docker` would read as an OPTION rather than as a value.
+ *
+ * Passing an argv array stops the SHELL from interpreting a value. It does NOT stop the
+ * spawned program's own option parser: a leading "-" is read as an option wherever it
+ * appears in argv. The proven form of this bug is git, where
+ * `git push --receive-pack=<cmd>` executes <cmd>; docker has the same shape, so a hostile
+ * value lands in an option slot instead of the value slot the code intended.
+ *
+ * Registry hosts, usernames, package names and tags never legitimately begin with "-",
+ * so this guard costs nothing and is applied at the entry point, before any spawn.
+ */
+export function assertNotOptionLike(value: string | undefined, label: string): void {
+  if (value !== undefined && value.startsWith('-')) {
+    throw new Error(
+      `Refusing to pass a ${label} beginning with "-" to docker: ${JSON.stringify(value)}. ` +
+        "docker would read it as an option rather than as a value."
+    );
+  }
+}
+
+/**
  * Validate and parse registry type
  */
 export function validateRegistryType(type: string): RegistryType {

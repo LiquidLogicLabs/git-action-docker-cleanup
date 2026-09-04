@@ -33305,6 +33305,19 @@ function getInputs() {
     };
     (0, validation_1.validateProviderConfig)(providerConfig);
     (0, validation_1.validateCleanupConfig)(cleanupConfig);
+    // Argument-injection guard, at the entry point. These are the inputs that reach
+    // `docker`'s argv (see DockerCLIProvider): registry-url and package/packages become the
+    // image name passed to `docker image rm` / `docker manifest inspect`, and
+    // registry-username is passed to `docker login`. A leading "-" would be read by docker's
+    // own option parser as an option, whatever the argv array does about the shell.
+    // registry-url is checked AFTER normalisation because the provider strips "https://".
+    if (registryUrl) {
+        (0, validation_1.assertNotOptionLike)((0, validation_1.normalizeRegistryUrl)(registryUrl), 'registry URL');
+    }
+    (0, validation_1.assertNotOptionLike)(registryUsername || undefined, 'registry username');
+    for (const pkg of packages) {
+        (0, validation_1.assertNotOptionLike)(pkg, 'package name');
+    }
     return {
         providerConfig,
         cleanupConfig,
@@ -33701,6 +33714,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DockerCLIProvider = void 0;
 const exec = __importStar(__nccwpck_require__(5236));
+const validation_1 = __nccwpck_require__(8634);
 /**
  * Docker CLI provider
  * Uses Docker CLI commands ONLY - no HTTP API calls
@@ -33724,6 +33738,9 @@ class DockerCLIProvider {
             throw new Error('registry-url is required for Docker CLI provider');
         }
         this.registryUrl = this.normalizeRegistryUrl(config.registryUrl);
+        // After normalisation: normalizeRegistryUrl() strips "https://", so guarding the raw
+        // input would let `https://--config=/tmp/evil` through as `--config=/tmp/evil`.
+        (0, validation_1.assertNotOptionLike)(this.registryUrl, 'registry URL');
     }
     normalizeRegistryUrl(url) {
         // Remove protocol and trailing slash
@@ -33731,6 +33748,8 @@ class DockerCLIProvider {
         return normalized;
     }
     getImageName(packageName, tag) {
+        (0, validation_1.assertNotOptionLike)(packageName, 'package name');
+        (0, validation_1.assertNotOptionLike)(tag, 'tag');
         const imageName = `${this.registryUrl}/${packageName}`;
         return tag ? `${imageName}:${tag}` : imageName;
     }
@@ -33789,6 +33808,7 @@ class DockerCLIProvider {
         // If credentials are provided, we'll login to the registry (useful for pulling images or if Docker has cached credentials)
         const username = this.config.username;
         const password = this.config.password || this.config.token;
+        (0, validation_1.assertNotOptionLike)(username, 'registry username');
         if (username && password) {
             this.logger.debug(`[DockerCLI] authenticate: Credentials provided, attempting docker login`);
             try {
@@ -33854,6 +33874,7 @@ class DockerCLIProvider {
         return packages;
     }
     async getPackageManifests(packageName) {
+        (0, validation_1.assertNotOptionLike)(packageName, 'package name');
         this.logger.debug(`[DockerCLI] Getting all manifests for package: ${packageName} from local Docker images`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
@@ -33879,6 +33900,7 @@ class DockerCLIProvider {
         return manifests;
     }
     async listTags(packageName) {
+        (0, validation_1.assertNotOptionLike)(packageName, 'package name');
         this.logger.debug(`[DockerCLI] Listing all tags for package: ${packageName} from local Docker images`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
@@ -33919,6 +33941,8 @@ class DockerCLIProvider {
         return tags;
     }
     async deleteTag(packageName, tag, _tagsBeingDeleted) {
+        (0, validation_1.assertNotOptionLike)(packageName, 'package name');
+        (0, validation_1.assertNotOptionLike)(tag, 'tag');
         this.logger.debug(`[DockerCLI] Deleting local Docker image: ${packageName}:${tag}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
@@ -33948,6 +33972,8 @@ class DockerCLIProvider {
         }
     }
     async getManifest(packageName, reference) {
+        (0, validation_1.assertNotOptionLike)(packageName, 'package name');
+        (0, validation_1.assertNotOptionLike)(reference, 'manifest reference');
         this.logger.debug(`[DockerCLI] Inspecting local Docker image manifest: ${packageName}:${reference}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
@@ -34015,6 +34041,8 @@ class DockerCLIProvider {
         }
     }
     async deleteManifest(packageName, digest) {
+        (0, validation_1.assertNotOptionLike)(packageName, 'package name');
+        (0, validation_1.assertNotOptionLike)(digest, 'manifest digest');
         this.logger.debug(`[DockerCLI] Deleting local Docker images matching manifest digest: ${digest} from package: ${packageName}`);
         // Authentication is optional for local operations
         if (!this.authenticated) {
@@ -34031,6 +34059,7 @@ class DockerCLIProvider {
         for (const image of images) {
             if (image.Repository === imageName && image.ID.startsWith(digestShort)) {
                 const fullImageName = `${image.Repository}:${image.Tag}`;
+                (0, validation_1.assertNotOptionLike)(fullImageName, 'image name');
                 this.logger.debug(`[DockerCLI] deleteManifest: Found matching image ${fullImageName} (ID: ${image.ID})`);
                 try {
                     this.logger.debug(`[DockerCLI] deleteManifest: Running 'docker image rm ${fullImageName}'`);
@@ -35819,6 +35848,7 @@ exports.HttpClient = HttpClient;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.assertNotOptionLike = assertNotOptionLike;
 exports.validateRegistryType = validateRegistryType;
 exports.validateProviderConfig = validateProviderConfig;
 exports.validateCleanupConfig = validateCleanupConfig;
@@ -35827,6 +35857,24 @@ exports.normalizeRegistryUrl = normalizeRegistryUrl;
 exports.extractHostname = extractHostname;
 exports.matchRegistryUrl = matchRegistryUrl;
 exports.expandPackages = expandPackages;
+/**
+ * Reject a value that `docker` would read as an OPTION rather than as a value.
+ *
+ * Passing an argv array stops the SHELL from interpreting a value. It does NOT stop the
+ * spawned program's own option parser: a leading "-" is read as an option wherever it
+ * appears in argv. The proven form of this bug is git, where
+ * `git push --receive-pack=<cmd>` executes <cmd>; docker has the same shape, so a hostile
+ * value lands in an option slot instead of the value slot the code intended.
+ *
+ * Registry hosts, usernames, package names and tags never legitimately begin with "-",
+ * so this guard costs nothing and is applied at the entry point, before any spawn.
+ */
+function assertNotOptionLike(value, label) {
+    if (value !== undefined && value.startsWith('-')) {
+        throw new Error(`Refusing to pass a ${label} beginning with "-" to docker: ${JSON.stringify(value)}. ` +
+            "docker would read it as an option rather than as a value.");
+    }
+}
 /**
  * Validate and parse registry type
  */
