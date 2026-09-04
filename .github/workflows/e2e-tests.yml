@@ -2,15 +2,27 @@ name: Tests - E2E
 
 on:
   workflow_call:
+    secrets:
+      # Declared so a caller can pass them explicitly. Without a declaration GitHub
+      # rejects `secrets: {NAME: ...}` at parse time, which is why `secrets: inherit`
+      # was used -- it works without declarations, but hands this workflow every
+      # secret in the repository.
+      E2E_GITHUB_TOKEN:
+        required: false
+      E2E_GITEA_TOKEN:
+        required: false
+      E2E_DOCKERHUB_TOKEN:
+        required: false
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow || 'E2E Tests' }}-${{ github.ref || github.sha }}
   cancel-in-progress: true
 
+# Floor for every job in this file. Deleting this block would NOT narrow anything --
+# jobs would fall back to the repository default, which may be write-all.
 permissions:
   contents: read
-  packages: write
 
 jobs:
   e2e-dry-run:
@@ -32,13 +44,15 @@ jobs:
             url: unknown-registry.example.com
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          # No step in this job pushes to git; the credential is not needed.
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Test - ${{ matrix.registry.type }} (dry-run)
         id: test-dry-run
-        uses: ./
+        uses: ./  # zizmor: ignore[self-repository] — local ACTION reference under test, not a reusable-workflow call; $/ does not apply
         with:
           registry-type: ${{ matrix.registry.type }}
           registry-url: ${{ matrix.registry.url }}
@@ -50,12 +64,20 @@ jobs:
 
       - name: Test Summary
         if: always()
+        env:
+          Z_MATRIX_REGISTRY_TYPE: ${{ matrix.registry.type }}
+          Z_MATRIX_REGISTRY_URL: ${{ matrix.registry.url }}
         run: |
-          echo "## ✅ E2E Dry-Run Test: ${{ matrix.registry.type }}" >> $GITHUB_STEP_SUMMARY
-          echo "Registry: ${{ matrix.registry.type }} (${{ matrix.registry.url }})" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## ✅ E2E Dry-Run Test: ${Z_MATRIX_REGISTRY_TYPE}"
+            echo "Registry: ${Z_MATRIX_REGISTRY_TYPE} (${Z_MATRIX_REGISTRY_URL})"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   e2e-real:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # pushes the throwaway test image to ghcr.io
     # Only run if we have tokens configured (skip in forks or if tokens are not available)
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     strategy:
@@ -89,48 +111,64 @@ jobs:
     steps:
       - name: Check if registry is configured
         id: check-config
+        env:
+          Z_MATRIX_REGISTRY_TYPE: ${{ matrix.registry.type }}
+          Z_MATRIX_REGISTRY_SKIP_IF_MISSING: ${{ matrix.registry.skip_if_missing }}
+          Z_VARS_E2E_GITEA_URL: ${{ vars.E2E_GITEA_URL }}
+          Z_SECRETS_E2E_GITEA_TOKEN: ${{ secrets.E2E_GITEA_TOKEN }}
+          Z_VARS_E2E_DOCKERHUB_USERNAME: ${{ vars.E2E_DOCKERHUB_USERNAME }}
+          Z_SECRETS_E2E_DOCKERHUB_TOKEN: ${{ secrets.E2E_DOCKERHUB_TOKEN }}
         run: |
-          REGISTRY_TYPE="${{ matrix.registry.type }}"
-          SKIP_IF_MISSING="${{ matrix.registry.skip_if_missing }}"
+          REGISTRY_TYPE="${Z_MATRIX_REGISTRY_TYPE}"
+          SKIP_IF_MISSING="${Z_MATRIX_REGISTRY_SKIP_IF_MISSING}"
           
           if [ "$SKIP_IF_MISSING" = "true" ]; then
             if [ "$REGISTRY_TYPE" = "gitea" ]; then
-              if [ -z "${{ vars.E2E_GITEA_URL }}" ] || [ -z "${{ secrets.E2E_GITEA_TOKEN }}" ]; then
-                echo "skipped=true" >> $GITHUB_OUTPUT
-                echo "reason=Gitea E2E test skipped: E2E_GITEA_URL or E2E_GITEA_TOKEN not configured" >> $GITHUB_OUTPUT
+              if [ -z "${Z_VARS_E2E_GITEA_URL}" ] || [ -z "${Z_SECRETS_E2E_GITEA_TOKEN}" ]; then
+                {
+                  echo "skipped=true"
+                  echo "reason=Gitea E2E test skipped: E2E_GITEA_URL or E2E_GITEA_TOKEN not configured"
+                } >> "$GITHUB_OUTPUT"
                 exit 0
               fi
             elif [ "$REGISTRY_TYPE" = "docker-hub" ]; then
-              if [ -z "${{ vars.E2E_DOCKERHUB_USERNAME }}" ] || [ -z "${{ secrets.E2E_DOCKERHUB_TOKEN }}" ]; then
-                echo "skipped=true" >> $GITHUB_OUTPUT
-                echo "reason=Docker Hub E2E test skipped: E2E_DOCKERHUB_USERNAME or E2E_DOCKERHUB_TOKEN not configured" >> $GITHUB_OUTPUT
+              if [ -z "${Z_VARS_E2E_DOCKERHUB_USERNAME}" ] || [ -z "${Z_SECRETS_E2E_DOCKERHUB_TOKEN}" ]; then
+                {
+                  echo "skipped=true"
+                  echo "reason=Docker Hub E2E test skipped: E2E_DOCKERHUB_USERNAME or E2E_DOCKERHUB_TOKEN not configured"
+                } >> "$GITHUB_OUTPUT"
                 exit 0
               fi
             fi
           fi
           
-          echo "skipped=false" >> $GITHUB_OUTPUT
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
           echo "✅ Registry $REGISTRY_TYPE is configured"
 
       - name: Checkout code
         if: steps.check-config.outputs.skipped != 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          # No step in this job pushes to git; the credential is not needed.
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Docker Buildx
         if: steps.check-config.outputs.skipped != 'true'
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
       - name: Determine registry configuration
         if: steps.check-config.outputs.skipped != 'true'
         id: registry-config
         env:
-          TOKEN_SECRET_NAME: ${{ matrix.registry.token_secret }}
+          Z_REGISTRY_TYPE: ${{ matrix.registry.type }}
+          Z_REGISTRY_HOST: ${{ matrix.registry.registry_host }}
+          Z_IMAGE_NAME_FORMAT: ${{ matrix.registry.image_name_format }}
+          Z_PACKAGE_PREFIX: ${{ matrix.registry.package_prefix }}
         run: |
-          REGISTRY_HOST="${{ matrix.registry.registry_host }}"
-          IMAGE_NAME_FORMAT="${{ matrix.registry.image_name_format }}"
-          PACKAGE_PREFIX="${{ matrix.registry.package_prefix }}"
+          REGISTRY_HOST="${Z_REGISTRY_HOST}"
+          IMAGE_NAME_FORMAT="${Z_IMAGE_NAME_FORMAT}"
+          PACKAGE_PREFIX="${Z_PACKAGE_PREFIX}"
           
           # Extract host from URL for Gitea (remove protocol)
           if [[ "$REGISTRY_HOST" == http* ]]; then
@@ -146,52 +184,51 @@ jobs:
           IMAGE_NAME="${IMAGE_NAME_FORMAT//\{host\}/$REGISTRY_HOST}"
           IMAGE_NAME="${IMAGE_NAME//\{prefix\}/$PACKAGE_PREFIX_LOWER}"
           
-          # Get password from secret (GitHub Actions doesn't support dynamic secret access)
-          if [ "$TOKEN_SECRET_NAME" = "GITHUB_TOKEN" ]; then
-            DOCKER_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
-          elif [ "$TOKEN_SECRET_NAME" = "E2E_GITHUB_TOKEN" ]; then
-            DOCKER_PASSWORD="${{ secrets.E2E_GITHUB_TOKEN }}"
-          elif [ "$TOKEN_SECRET_NAME" = "E2E_GITEA_TOKEN" ]; then
-            DOCKER_PASSWORD="${{ secrets.E2E_GITEA_TOKEN }}"
-          elif [ "$TOKEN_SECRET_NAME" = "E2E_DOCKERHUB_TOKEN" ]; then
-            DOCKER_PASSWORD="${{ secrets.E2E_DOCKERHUB_TOKEN }}"
-          fi
-          
-          echo "registry_host=${REGISTRY_HOST}" >> $GITHUB_OUTPUT
-          echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
-          echo "package_prefix_lower=${PACKAGE_PREFIX_LOWER}" >> $GITHUB_OUTPUT
-          echo "docker_username=${{ matrix.registry.username }}" >> $GITHUB_OUTPUT
-          echo "docker_password=${DOCKER_PASSWORD}" >> $GITHUB_OUTPUT
-          
-          echo "✅ Configured for ${{ matrix.registry.type }}: ${IMAGE_NAME}"
+          # The registry credential is NOT resolved here. It used to be, and was then
+          # written to $GITHUB_OUTPUT -- which makes it readable by every later step in
+          # the job and stores it with the run. Each step that needs the credential now
+          # takes it directly from the secrets context instead.
+          {
+            echo "registry_host=${REGISTRY_HOST}"
+            echo "image_name=${IMAGE_NAME}"
+            echo "package_prefix_lower=${PACKAGE_PREFIX_LOWER}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "✅ Configured for ${Z_REGISTRY_TYPE}: ${IMAGE_NAME}"
 
       - name: Login to registry
         if: steps.check-config.outputs.skipped != 'true'
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ steps.registry-config.outputs.registry_host }}
-          username: ${{ steps.registry-config.outputs.docker_username }}
-          password: ${{ steps.registry-config.outputs.docker_password }}
+          username: ${{ matrix.registry.username }}
+          # The matrix picks one of three E2E registry tokens per row and GitHub offers
+          # no static way to select a secret per matrix row. The exposure is bounded by
+          # the workflow_call secrets declaration above: callers pass exactly these
+          # three, so the secrets context this expression sees contains only them.
+          password: ${{ secrets[matrix.registry.token_secret] }}  # zizmor: ignore[overprovisioned-secrets]
 
       - name: Create test images
         if: steps.check-config.outputs.skipped != 'true'
+        env:
+          Z_REGISTRY_CONFIG_OUTPUTS_IMAGE_NAME: ${{ steps.registry-config.outputs.image_name }}
         run: |
-          IMAGE_NAME="${{ steps.registry-config.outputs.image_name }}"
+          IMAGE_NAME="${Z_REGISTRY_CONFIG_OUTPUTS_IMAGE_NAME}"
           
           # Pull a minimal image (alpine is ~5MB)
           docker pull alpine:latest
           
           # Tag with multiple test tags
-          docker tag alpine:latest ${IMAGE_NAME}:test-tag-1
-          docker tag alpine:latest ${IMAGE_NAME}:test-tag-2
-          docker tag alpine:latest ${IMAGE_NAME}:test-tag-3
-          docker tag alpine:latest ${IMAGE_NAME}:keep-me
+          docker tag alpine:latest "${IMAGE_NAME}:test-tag-1"
+          docker tag alpine:latest "${IMAGE_NAME}:test-tag-2"
+          docker tag alpine:latest "${IMAGE_NAME}:test-tag-3"
+          docker tag alpine:latest "${IMAGE_NAME}:keep-me"
           
           # Push all tags
-          docker push ${IMAGE_NAME}:test-tag-1
-          docker push ${IMAGE_NAME}:test-tag-2
-          docker push ${IMAGE_NAME}:test-tag-3
-          docker push ${IMAGE_NAME}:keep-me
+          docker push "${IMAGE_NAME}:test-tag-1"
+          docker push "${IMAGE_NAME}:test-tag-2"
+          docker push "${IMAGE_NAME}:test-tag-3"
+          docker push "${IMAGE_NAME}:keep-me"
           
           echo "✅ Test images pushed successfully to ${IMAGE_NAME}"
 
@@ -199,13 +236,14 @@ jobs:
         if: steps.check-config.outputs.skipped != 'true'
         id: test-delete-tags
         continue-on-error: ${{ matrix.registry.type == 'ghcr' }}
-        uses: ./
+        uses: ./  # zizmor: ignore[self-repository] — local ACTION reference under test, not a reusable-workflow call; $/ does not apply
         with:
           registry-type: ${{ matrix.registry.type }}
           registry-url: ${{ matrix.registry.url }}
           registry-username: ${{ matrix.registry.username }}
-          registry-password: ${{ steps.registry-config.outputs.docker_password }}
-          token: ${{ secrets[matrix.registry.token_secret] }}
+          # See the note on the login step for why this is a dynamic secrets lookup.
+          registry-password: ${{ secrets[matrix.registry.token_secret] }}  # zizmor: ignore[overprovisioned-secrets]
+          token: ${{ secrets[matrix.registry.token_secret] }}  # zizmor: ignore[overprovisioned-secrets]
           owner: ${{ matrix.registry.package_prefix }}
           package: ${{ steps.registry-config.outputs.package_prefix_lower }}/e2e-test-image
           delete-tags: test-tag-*
@@ -215,9 +253,13 @@ jobs:
 
       - name: Verify tags deleted
         if: steps.check-config.outputs.skipped != 'true'
+        env:
+          Z_REGISTRY_CONFIG_OUTPUTS_IMAGE_NAME: ${{ steps.registry-config.outputs.image_name }}
+          Z_MATRIX_REGISTRY_TYPE: ${{ matrix.registry.type }}
+          Z_TEST_DELETE_TAGS_OUTCOME: ${{ steps.test-delete-tags.outcome }}
         run: |
-          IMAGE_NAME="${{ steps.registry-config.outputs.image_name }}"
-          REGISTRY_TYPE="${{ matrix.registry.type }}"
+          IMAGE_NAME="${Z_REGISTRY_CONFIG_OUTPUTS_IMAGE_NAME}"
+          REGISTRY_TYPE="${Z_MATRIX_REGISTRY_TYPE}"
           
           # GHCR has a limitation: when multiple tags point to the same image version,
           # deleting one tag deletes the entire version, and GitHub prevents deleting
@@ -228,36 +270,36 @@ jobs:
             echo "   The action correctly reports this limitation."
             
             # For GHCR, verify that keep-me still exists (the excluded tag)
-            if ! docker manifest inspect ${IMAGE_NAME}:keep-me 2>/dev/null; then
+            if ! docker manifest inspect "${IMAGE_NAME}:keep-me" 2>/dev/null; then
               echo "❌ keep-me tag was deleted (should be kept)"
               exit 1
             fi
             
             # Check if the action reported the limitation (exit code 1 with error message)
-            if [ "${{ steps.test-delete-tags.outcome }}" = "failure" ]; then
+            if [ "${Z_TEST_DELETE_TAGS_OUTCOME}" = "failure" ]; then
               echo "✅ GHCR test: Action correctly reported the limitation"
             else
               echo "⚠️  GHCR test: Action completed but may not have reported the limitation"
             fi
           else
             # For other registries, verify test-tag-* tags are deleted but keep-me still exists
-            if docker manifest inspect ${IMAGE_NAME}:test-tag-1 2>/dev/null; then
+            if docker manifest inspect "${IMAGE_NAME}:test-tag-1" 2>/dev/null; then
               echo "❌ test-tag-1 still exists (should be deleted)"
               exit 1
             fi
             
-            if docker manifest inspect ${IMAGE_NAME}:test-tag-2 2>/dev/null; then
+            if docker manifest inspect "${IMAGE_NAME}:test-tag-2" 2>/dev/null; then
               echo "❌ test-tag-2 still exists (should be deleted)"
               exit 1
             fi
             
-            if docker manifest inspect ${IMAGE_NAME}:test-tag-3 2>/dev/null; then
+            if docker manifest inspect "${IMAGE_NAME}:test-tag-3" 2>/dev/null; then
               echo "❌ test-tag-3 still exists (should be deleted)"
               exit 1
             fi
             
             # Verify keep-me tag still exists
-            if ! docker manifest inspect ${IMAGE_NAME}:keep-me 2>/dev/null; then
+            if ! docker manifest inspect "${IMAGE_NAME}:keep-me" 2>/dev/null; then
               echo "❌ keep-me tag was deleted (should be kept)"
               exit 1
             fi
@@ -267,22 +309,31 @@ jobs:
 
       - name: Cleanup remaining test image
         if: always() && steps.check-config.outputs.skipped != 'true'
+        env:
+          Z_REGISTRY_CONFIG_OUTPUTS_IMAGE_NAME: ${{ steps.registry-config.outputs.image_name }}
         run: |
-          IMAGE_NAME="${{ steps.registry-config.outputs.image_name }}"
+          IMAGE_NAME="${Z_REGISTRY_CONFIG_OUTPUTS_IMAGE_NAME}"
           # Delete the remaining test image locally
-          docker rmi ${IMAGE_NAME}:keep-me 2>/dev/null || true
+          docker rmi "${IMAGE_NAME}:keep-me" 2>/dev/null || true
           # Note: The package will remain in the registry, which is acceptable for E2E tests
 
       - name: Test Summary
         if: always()
+        env:
+          Z_CHECK_CONFIG_OUTPUTS_SKIPPED: ${{ steps.check-config.outputs.skipped }}
+          Z_MATRIX_REGISTRY_TYPE: ${{ matrix.registry.type }}
+          Z_CHECK_CONFIG_OUTPUTS_REASON: ${{ steps.check-config.outputs.reason }}
+          Z_MATRIX_REGISTRY_URL: ${{ matrix.registry.url }}
         run: |
-          if [ "${{ steps.check-config.outputs.skipped }}" = "true" ]; then
-            echo "## ⏭️ E2E Test Skipped: ${{ matrix.registry.type }}" >> $GITHUB_STEP_SUMMARY
-            echo "${{ steps.check-config.outputs.reason }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "## ✅ E2E Test: ${{ matrix.registry.type }}" >> $GITHUB_STEP_SUMMARY
-            echo "- Registry: ${{ matrix.registry.type }} (${{ matrix.registry.url }})" >> $GITHUB_STEP_SUMMARY
-            echo "- Created and pushed test images" >> $GITHUB_STEP_SUMMARY
-            echo "- Deleted test-tag-* tags (excluded keep-me)" >> $GITHUB_STEP_SUMMARY
-            echo "- Verified deletion worked correctly" >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            if [ "${Z_CHECK_CONFIG_OUTPUTS_SKIPPED}" = "true" ]; then
+              echo "## ⏭️ E2E Test Skipped: ${Z_MATRIX_REGISTRY_TYPE}"
+              echo "${Z_CHECK_CONFIG_OUTPUTS_REASON}"
+            else
+              echo "## ✅ E2E Test: ${Z_MATRIX_REGISTRY_TYPE}"
+              echo "- Registry: ${Z_MATRIX_REGISTRY_TYPE} (${Z_MATRIX_REGISTRY_URL})"
+              echo "- Created and pushed test images"
+              echo "- Deleted test-tag-* tags (excluded keep-me)"
+              echo "- Verified deletion worked correctly"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

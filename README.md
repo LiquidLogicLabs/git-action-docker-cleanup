@@ -1,6 +1,6 @@
 # Docker Registry Cleanup Action
 
-[![CI](https://github.com/LiquidLogicLabs/actions/git-action-docker-cleanup/actions/workflows/ci.yml/badge.svg)](https://github.com/LiquidLogicLabs/actions/git-action-docker-cleanup/actions/workflows/ci.yml)
+[![CI](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/actions/workflows/ci.yml/badge.svg)](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
 
