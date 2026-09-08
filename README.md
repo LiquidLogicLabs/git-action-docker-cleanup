@@ -1,4 +1,4 @@
-# Docker Registry Cleanup Action
+# Git Docker Registry Cleanup
 
 [![CI](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/actions/workflows/ci.yml/badge.svg)](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -20,14 +20,14 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 **Example workflow:**
 ```yaml
 # Step 1: Test with dry-run
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: ghcr
     package: my-package
     dry-run: true  # ← Always start here!
 
 # Step 2: After reviewing dry-run output, remove dry-run for actual deletion
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: ghcr
     package: my-package
@@ -51,7 +51,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ### Basic Example - GHCR
 
 ```yaml
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: ghcr
     package: my-package
@@ -61,7 +61,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ### Gitea (Self-Hosted)
 
 ```yaml
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: gitea
     registry-url: https://gitea.example.com
@@ -73,7 +73,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ### Docker Hub
 
 ```yaml
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: docker-hub
     registry-username: ${{ secrets.DOCKER_USERNAME }}
@@ -85,7 +85,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ### Generic OCI Registry (Harbor, Quay.io, ACR, etc.)
 
 ```yaml
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: oci
     registry-url: registry.example.com
@@ -97,7 +97,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ### Auto-Detection
 
 ```yaml
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: auto
     registry-url: ghcr.io
@@ -108,7 +108,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ### Keep N Latest Tagged Images
 
 ```yaml
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: ghcr
     package: my-package
@@ -120,7 +120,7 @@ A GitHub/Gitea action that deletes untagged/tagged images from container registr
 ### Delete Untagged Images
 
 ```yaml
-- uses: LiquidLogicLabs/git-action-docker-cleanup@v1
+- uses: LiquidLogicLabs/git-action-docker-cleanup@v2
   with:
     registry-type: ghcr
     package: my-package
