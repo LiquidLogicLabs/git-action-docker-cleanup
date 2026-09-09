@@ -1,3 +1,14 @@
+## [2.0.8](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v2.0.7...v2.0.8) (2026-09-09)
+
+
+### Bug Fixes
+
+* **release-notes:** categorise revert commits under Maintenance ([c2b6e1b](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/c2b6e1b7e0cce1fa5f87fcdae3034a19f94fc89a))
+* **release-notes:** categorise the changelog by conventional-commit type ([26814ba](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/26814ba7d826dee64b03c1bfe0348b028cbfe255))
+* **release-notes:** drop the dead PR_LIST placeholder ([ffd6021](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/commit/ffd602133c2f3ba199a6edc7e1fad60c6ac21f3c))
+
+
+
 ## [2.0.7](https://github.com/LiquidLogicLabs/git-action-docker-cleanup/compare/v2.0.6...v2.0.7) (2026-09-08)
 
 
