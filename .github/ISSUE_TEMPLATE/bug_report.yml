@@ -1,0 +1,92 @@
+name: 🐛 Bug Report
+description: This action does not behave as its README documents
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These actions are built to run on GitHub Actions, Gitea Actions and
+        locally under [`act`](https://github.com/nektos/act), and the same input
+        can behave differently on each. The platform and the resolved version
+        are usually what decides whether a report is reproducible, so both are
+        required below.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where did this happen
+      description: If it happens in more than one place, pick where you first saw it and say so under "Anything else".
+      options:
+        - GitHub Actions (github.com)
+        - GitHub Actions (self-hosted runner)
+        - Gitea Actions
+        - act (locally)
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: action-version
+    attributes:
+      label: Action version
+      description: Exactly what your workflow references. `@v2` and `@v2.0.11` are different reports — a floating tag moves, so please also give the release it resolved to if you know it.
+      placeholder: "@v2 (resolved to v2.0.11)"
+    validations:
+      required: true
+
+  - type: input
+    id: forge-version
+    attributes:
+      label: Forge / runner version
+      description: For Gitea or a self-hosted runner, the version. Leave blank on github.com.
+      placeholder: Gitea 1.22.3, act_runner 0.2.11
+    validations:
+      required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: Where the README led you to expect it, if you can point at it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: The workflow step
+      description: The `uses:` line and its `with:` block, verbatim. Redact tokens and internal hostnames.
+      render: yaml
+      placeholder: |
+        - uses: LiquidLogicLabs/git-action-example@v2
+          with:
+            some-input: value
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: |
+        Please re-run with `verbose: true`, which reports the resolved inputs and
+        the platform that was detected. For full diagnostics including sanitized
+        HTTP traffic, set the `ACTIONS_STEP_DEBUG` secret to `true` and re-run.
+        Redact anything sensitive before pasting.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+    validations:
+      required: false

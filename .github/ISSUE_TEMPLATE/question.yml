@@ -1,0 +1,38 @@
+name: ❓ Question
+description: Ask how to use this action
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the repository README first — inputs, outputs and worked
+        examples live there.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Which platform
+      options:
+        - GitHub Actions (github.com)
+        - GitHub Actions (self-hosted runner)
+        - Gitea Actions
+        - act (locally)
+        - Not platform specific
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What you have tried
+      description: The workflow step you are working with, if there is one. Redact tokens.
+      render: yaml
+    validations:
+      required: false

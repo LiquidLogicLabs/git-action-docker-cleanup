@@ -1,0 +1,56 @@
+name: 💡 Feature Request
+description: Suggest a capability this action does not have
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to automate, and where does this action stop short? Describe the need rather than the implementation — it often has a simpler answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like it to do
+      description: If it would mean a new input or output, suggest a name. Inputs and outputs here are kebab-case.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Where it needs to work
+      description: Anything added here has to behave the same everywhere it is claimed to run, so this shapes how much work it is.
+      options:
+        - label: GitHub Actions
+          required: false
+        - label: Gitea Actions
+          required: false
+        - label: act (locally)
+          required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How you work around it today
+      description: If there is no workaround, say so — that is useful signal.
+    validations:
+      required: false
+
+  - type: textarea
+    id: example
+    attributes:
+      label: How it would look in a workflow
+      render: yaml
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to open a pull request for this
+          required: false

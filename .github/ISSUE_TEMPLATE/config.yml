@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 All LiquidLogic Labs actions
+    url: https://github.com/LiquidLogicLabs
+    about: If your problem is with a different action, please open the issue on that repository.
