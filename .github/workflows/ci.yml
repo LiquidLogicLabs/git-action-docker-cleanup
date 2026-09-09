@@ -180,6 +180,24 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Packaged output must be committed
+        # The same assertion release.yml makes, moved to PR time. Without it a
+        # stale bundle passes CI and only fails when a release is cut, which is
+        # late and noisy -- the tag is already pushed by then. Husky rebuilds
+        # dist/ on commit locally, but a fork's PR has no hooks.
+        #
+        # Only the runtime bundle is compared. .d.ts.map files embed absolute
+        # paths and differ harmlessly between machines, which is why release.yml
+        # narrows it the same way; CI must not enforce more than release does.
+        run: |
+          npm run package
+          if ! git diff --quiet dist/index.js dist/index.js.map 2>/dev/null; then
+            echo "::error::dist/index.js or dist/index.js.map changed after packaging. Run 'npm run package' and commit dist/."
+            git diff --stat dist/index.js dist/index.js.map
+            exit 1
+          fi
+          echo "Runtime bundle (dist/index.js, dist/index.js.map) is committed and current."
+
   test:
     needs: lint
     # act 0.2.89 rejects `$/`; see the note in release.yml. Marker must be on this line.
