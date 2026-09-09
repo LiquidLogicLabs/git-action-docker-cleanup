@@ -100,10 +100,13 @@ jobs:
 
       - name: Generate release notes
         id: release_notes
-        uses: mikepenz/release-changelog-builder-action@cb021f9b36a51a7c6f18e4679b6fa2cb77a1260c # v6
+        # zizmor: ignore[unpinned-uses] — first-party action; no Renovate or
+        # Dependabot exists in these repos, so a SHA pin would freeze it and stop
+        # security fixes reaching us through @v3.
+        uses: LiquidLogicLabs/git-action-release-changelog-builder@v3
         with:
           mode: "HYBRID"
-          configurationJson: |
+          configuration-json: |
             {
               "template": "#{{CHANGELOG}}\n\n---\n\n### Usage\n\n```yaml\n- uses: LiquidLogicLabs/git-action-docker-cleanup@${{ github.ref_name }}\n  with:\n    registry-type: 'ghcr'\n    package: 'my-package'\n    dry-run: true\n```",
               "categories": [
@@ -113,7 +116,11 @@ jobs:
                   { "title": "## 🔧 CI & Build",    "labels": [], "rules": [{ "pattern": "^(ci|build)(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] },
                   { "title": "## 🧪 Tests",         "labels": [], "rules": [{ "pattern": "^test(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] },
                   { "title": "## 🧹 Maintenance",   "labels": [], "rules": [{ "pattern": "^(chore(?!\\(release\\))|refactor|style|perf|revert)(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] }
-                ]
+                ],
+              "commit_template": "- #{{TITLE}}",
+              "ignore_rules": [
+                { "pattern": "^chore\\(release\\):", "on_property": "title", "flags": "gu" }
+              ]
             }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
