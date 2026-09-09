@@ -125,10 +125,17 @@ jobs:
               want="v$(echo "${latest#v}" | cut -d. -f1)"
             fi
 
-            if [ "$pin" != "$want" ]; then
-              echo "::error::documentation references ${ref}, but the current major is ${want}"
-              fail=1
-            fi
+            # The pin must sit ON the current major: the bare major (v3), a minor
+            # (v3.0) or an exact version (v3.0.7) are all fine, because docs
+            # legitimately demonstrate minor and exact pinning. Only a pin on a
+            # different major is wrong.
+            case "$pin" in
+              "$want"|"$want".*) : ;;
+              *)
+                echo "::error::documentation references ${ref}, but the current major is ${want}"
+                fail=1
+                ;;
+            esac
           done
 
           if [ "$fail" -ne 0 ]; then
