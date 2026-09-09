@@ -82,6 +82,61 @@ jobs:
           # where nearly all the shell actually lives.
           args: -color
 
+      - name: Documentation must reference current action majors
+        # Docs pin floating majors (@v2), so patch and minor releases need no doc
+        # change. A MAJOR bump does, and nothing signals when it is missed -- three
+        # READMEs in this set sat on git-action-release@v1 long after it went v2.
+        # The examples still ran, which is why nobody noticed.
+        #
+        # Scope is README.md plus docs/**.md, taken from git ls-files so the set is
+        # derived rather than hand-listed. CHANGELOG.md is excluded on purpose: it
+        # records history and must keep naming old versions. Agent/tooling markdown
+        # (_bmad/, .cursor/, .claude/) is not user documentation.
+        run: |
+          set -uo pipefail
+          this="${GITHUB_REPOSITORY##*/}"
+          self_major="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([0-9][0-9]*\)\..*/\1/p' package.json | head -1)"
+          if [ -z "$self_major" ]; then
+            echo "::error::could not read the major version from package.json"
+            exit 1
+          fi
+
+          mapfile -t files < <(git ls-files 'README.md' 'docs/*.md' 'docs/**/*.md')
+          if [ ${#files[@]} -eq 0 ]; then echo "No documentation to check."; exit 0; fi
+
+          mapfile -t refs < <(grep -ohE 'LiquidLogicLabs/git-action-[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+' "${files[@]}" | sort -u)
+          if [ ${#refs[@]} -eq 0 ]; then echo "No action references in documentation."; exit 0; fi
+
+          fail=0
+          for ref in "${refs[@]}"; do
+            target="${ref#LiquidLogicLabs/}"; target="${target%@*}"
+            pin="${ref#*@}"
+
+            if [ "$target" = "$this" ]; then
+              want="v${self_major}"
+            else
+              latest="$(git ls-remote --tags "https://github.com/LiquidLogicLabs/${target}.git" 2>/dev/null \
+                        | sed 's|\^{}||' | awk '{print $2}' | sed 's|refs/tags/||' \
+                        | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -u -V | tail -1)"
+              if [ -z "$latest" ]; then
+                echo "::notice::could not resolve ${target}; skipping this reference"
+                continue
+              fi
+              want="v$(echo "${latest#v}" | cut -d. -f1)"
+            fi
+
+            if [ "$pin" != "$want" ]; then
+              echo "::error::documentation references ${ref}, but the current major is ${want}"
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Update the reference, or cut the major it names."
+            exit 1
+          fi
+          echo "All ${#refs[@]} documented action references name the current major."
+
       - name: Audit workflows for injection and supply-chain issues
         run: |
           docker run --rm -v "$PWD:/repo" ghcr.io/zizmorcore/zizmor:1.30.0 \
