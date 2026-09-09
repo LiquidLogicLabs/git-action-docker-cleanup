@@ -105,7 +105,15 @@ jobs:
           mode: "HYBRID"
           configurationJson: |
             {
-              "template": "#{{CHANGELOG}}\n\n---\n\n### Usage\n\n```yaml\n- uses: LiquidLogicLabs/git-action-docker-cleanup@${{ github.ref_name }}\n  with:\n    registry-type: 'ghcr'\n    package: 'my-package'\n    dry-run: true\n```"
+              "template": "#{{CHANGELOG}}\n\n---\n\n### Usage\n\n```yaml\n- uses: LiquidLogicLabs/git-action-docker-cleanup@${{ github.ref_name }}\n  with:\n    registry-type: 'ghcr'\n    package: 'my-package'\n    dry-run: true\n```",
+              "categories": [
+                  { "title": "## 🚀 Features",      "labels": [], "rules": [{ "pattern": "^feat(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] },
+                  { "title": "## 🐛 Fixes",         "labels": [], "rules": [{ "pattern": "^fix(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] },
+                  { "title": "## 📝 Documentation", "labels": [], "rules": [{ "pattern": "^docs(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] },
+                  { "title": "## 🔧 CI & Build",    "labels": [], "rules": [{ "pattern": "^(ci|build)(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] },
+                  { "title": "## 🧪 Tests",         "labels": [], "rules": [{ "pattern": "^test(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] },
+                  { "title": "## 🧹 Maintenance",   "labels": [], "rules": [{ "pattern": "^(chore(?!\\(release\\))|refactor|style|perf)(\\(.+\\))?!?:", "on_property": "title", "flags": "gu" }] }
+                ]
             }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
