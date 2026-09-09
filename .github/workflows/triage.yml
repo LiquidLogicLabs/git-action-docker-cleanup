@@ -1,0 +1,69 @@
+name: Triage
+
+# The bug and question forms ask which platform the reporter was on, because on
+# this set of actions that single fact usually decides whether a report is
+# reproducible -- the same input can behave differently on GitHub Actions,
+# Gitea Actions and act. That answer arrives as structured data, so labelling
+# from it needs no model and no judgement.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  platform-label:
+    # The forms apply `bug` and `question`; both carry a `platform` dropdown.
+    # The feature form asks for platforms as checkboxes, which is a different
+    # shape, so it is left out rather than half-handled.
+    if: contains(github.event.issue.labels.*.name, 'bug') || contains(github.event.issue.labels.*.name, 'question')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout the issue templates
+        # The parser reads the form definition to map answers back to field ids,
+        # so the template this issue was filed with has to be on disk.
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          sparse-checkout: .github/ISSUE_TEMPLATE
+          persist-credentials: false
+
+      - name: Parse the issue form
+        id: parse
+        # Purpose-built and maintained; the alternative was extracting the value
+        # by hand from rendered markdown, which is the kind of parsing that goes
+        # wrong quietly the first time a heading is reworded.
+        uses: stefanbuck/github-issue-parser@cb6e97157cbf851e3a393ff8d57c93a484cc323f # v3.2.5
+        with:
+          template-path: .github/ISSUE_TEMPLATE/${{ contains(github.event.issue.labels.*.name, 'bug') && 'bug_report.yml' || 'question.yml' }}
+
+      - name: Apply the platform label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          # Passed through the environment rather than interpolated into the
+          # script: an issue body is attacker-controlled text.
+          PLATFORM: ${{ steps.parse.outputs.issueparser_platform }}
+        run: |
+          set -euo pipefail
+          case "${PLATFORM}" in
+            "GitHub Actions (github.com)")          label="platform: github" ;;
+            "GitHub Actions (self-hosted runner)")  label="platform: github self-hosted" ;;
+            "Gitea Actions")                        label="platform: gitea" ;;
+            "act (locally)")                        label="platform: act" ;;
+            *)
+              echo "No platform label for ${PLATFORM:-<empty>}; nothing to do."
+              exit 0
+              ;;
+          esac
+
+          echo "Labelling issue #${ISSUE} as '${label}'."
+          gh issue edit "${ISSUE}" --repo "${REPO}" --add-label "${label}"
