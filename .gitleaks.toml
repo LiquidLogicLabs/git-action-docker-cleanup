@@ -8,3 +8,13 @@ useDefault = true
 condition = "AND"
 paths = ['''^dist/index\.js(\.map)?$''']
 regexes = ['''abc123xyz456''']
+
+# Suppresses ONLY the SHA-256 content hashes in BMAD's own file-integrity
+# manifest. The second column of that CSV is a hash of each installed file, and
+# generic-api-key fires on any high-entropy 64-char hex string. condition = "AND"
+# means both must match AND the regex is anchored to a bare 64-hex string, so a
+# real secret in this file is still reported.
+[[allowlists]]
+condition = "AND"
+paths = ['''^_bmad/_config/files-manifest\.csv$''']
+regexes = ['''^[0-9a-f]{64}$''']
