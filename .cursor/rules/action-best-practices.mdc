@@ -765,7 +765,12 @@ Recommended release workflow properties (be consistent across repos):
   - Build/package the action in the release workflow (do not rely on a prebuilt local artifact).
 - Integrity:
   - Checkout with `fetch-depth: 0` if you generate changelogs from git history.
-  - Assert `dist/` is up-to-date (fail if `git diff --exit-code` after `npm run package`).
+  - Assert `dist/` is up-to-date after `npm run package`. Narrow the comparison to the
+    runtime bundle — `git diff --quiet dist/index.js dist/index.js.map` — because
+    `.d.ts.map` files embed absolute paths and differ harmlessly between machines. Make the
+    same assertion in `ci.yml` so a stale bundle fails at PR time, not at tag time.
+    Equivalent spellings exist in this repo set (`git diff --exit-code`,
+    `git diff --name-only dist/`); do not grep for one and conclude the gate is missing.
   - Ensure the release is built from the tagged commit.
 - Release output:
   - Generate release notes (from `CHANGELOG.md` or commit history).
