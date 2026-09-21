@@ -16,7 +16,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow || 'E2E Tests' }}-${{ github.ref || github.sha }}
+  # Distinct 'e2e-' prefix: release.yml calls this workflow and groups on
+  # ${{ github.workflow }}-<ref>, which resolves to the SAME value here when called.
+  # CLAUDE.md records a shared group between caller and callee as a deadlock.
+  group: e2e-${{ github.workflow || 'E2E Tests' }}-${{ github.ref || github.sha }}
   cancel-in-progress: true
 
 # Floor for every job in this file. Deleting this block would NOT narrow anything --
