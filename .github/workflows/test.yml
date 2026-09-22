@@ -48,7 +48,10 @@ jobs:
         # ratchet in jest.config. The unit and integration steps above each cover only
         # part of the tree, so neither alone is a meaningful coverage measurement --
         # that is why this is a separate step rather than a flag on one of them.
-        run: npm run test:coverage
+        # e2e suites are excluded: they need real forge tokens, which live in the TEST
+        # environment used by e2e-tests.yml, not in this job. Including them made this
+        # step fail on 11 unrelated e2e errors rather than on coverage.
+        run: npx jest --coverage --testPathIgnorePatterns='/e2e/'
 
       - name: Run integration tests
         run: npm run test:integration || echo "No integration tests found"
